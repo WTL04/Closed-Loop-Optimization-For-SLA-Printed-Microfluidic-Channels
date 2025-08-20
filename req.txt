@@ -1,9 +1,19 @@
+# data handling
 pandas
 numpy
-scikit-learn
-scikit-optimize
-ax-platform
+
+# data visualization
 matplotlib
 seaborn
+
+# ml libraries
 xgboost
+scikit-learn
+
+# adaptive development platform dependancies
+ax-platform
 nbformat
+ipython 
+plotly 
+kaleido
+botorch
