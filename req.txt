@@ -6,3 +6,4 @@ ax-platform
 matplotlib
 seaborn
 xgboost
+nbformat
