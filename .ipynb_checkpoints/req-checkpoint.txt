@@ -1,6 +1,7 @@
 # data handling
 pandas
 numpy
+statprocon
 
 # data visualization
 matplotlib
