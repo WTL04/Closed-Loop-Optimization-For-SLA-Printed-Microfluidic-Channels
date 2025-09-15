@@ -18,3 +18,8 @@ ipython
 plotly 
 kaleido
 botorch
+
+# auth 
+msal 
+python-dotenv
+requests
