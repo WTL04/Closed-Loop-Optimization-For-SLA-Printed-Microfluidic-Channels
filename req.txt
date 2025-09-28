@@ -6,6 +6,7 @@ statprocon
 # data visualization
 matplotlib
 seaborn
+plotly 
 
 # ml libraries
 xgboost
@@ -13,9 +14,9 @@ scikit-learn
 
 # adaptive development platform dependancies
 ax-platform
+bayesian-optimization
 nbformat
 ipython 
-plotly 
 kaleido
 botorch
 

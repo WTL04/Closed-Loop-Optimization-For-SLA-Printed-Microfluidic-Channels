@@ -1,7 +1,4 @@
 .env
 venv/
 venv310/
-<<<<<<< HEAD
-=======
 .ipynb_checkpoints/
->>>>>>> e233a02 (saving progress)
