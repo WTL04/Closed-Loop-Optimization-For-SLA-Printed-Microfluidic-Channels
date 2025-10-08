@@ -16,7 +16,8 @@ scikit-learn
 ax-platform
 bayesian-optimization
 nbformat
-ipython 
+ipython
+ipykernel 
 kaleido
 botorch
 
