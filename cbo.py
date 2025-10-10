@@ -95,8 +95,10 @@ class ContextualBayesOpt:
         self._build_schema()
 
         if verbose:
-            print("Best parameters found:", grid_search.best_params_)
-            print("Best cross-validation score:", grid_search.best_score_)
+            print("Best parameters found:")
+            print(grid_search.best_params_)
+            print("\nBest cross-validation score:")
+            print(grid_search.best_score_)
 
         return self.model
 
