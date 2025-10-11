@@ -26,20 +26,23 @@ def load_dataset():
 
     return df_multi
 
-
-def main():
-    df_multi = load_dataset()
-
-    # Compute per-batch mean, std, CV
-    batch_summary = df_multi.groupby("batch_id")["measured_flow_mL_per_min"].agg(["mean", "std"])
-    batch_summary["cv"] = batch_summary["std"] / batch_summary["mean"]
-
+def load_features():
     # Select features (fixed per batch)
     knobs = ["resin_type", "layer_thickness_um", "orientation_deg", "support_mode", "fit_adjustment_pct"] # tunable knobs
     context = ["resin_age", "resin_temp", "ambient_temp"]  # drift context
     print_output = ["channel_length_mm", "channel_width_mm"] # output data from 3d print
 
     features = knobs + context # combine knobs with context
+    return features
+
+
+def main():
+    df_multi = load_dataset()
+    features = load_features()
+
+    # Compute per-batch mean, std, CV
+    batch_summary = df_multi.groupby("batch_id")["measured_flow_mL_per_min"].agg(["mean", "std"])
+    batch_summary["cv"] = batch_summary["std"] / batch_summary["mean"]
 
     # Merge batch-level CV back with batch parameters
     df_batches = df_multi.groupby("batch_id").first()[features].reset_index()
@@ -78,18 +81,28 @@ def main():
         "support_mode": ("auto", "manual") # auto = 0, manual = 1, when encoded
     }
 
-    # current context snapshot BEFORE a print (experimental)
-    c_t = {
-        "ambient_temp": 72,    # °F, lab measurement
-        "resin_temp": 76,      # °F, sensor reading
-        "resin_age": 12.0,        # days since resin was opened
-    } 
+    # # current context snapshot BEFORE a print (experimental)
+    # c_t = {
+    #     "ambient_temp": 72,    # °F, lab measurement
+    #     "resin_temp": 76,      # °F, sensor reading
+    #     "resin_age": 12.0,        # days since resin was opened
+    # }
 
+    # current_ambient_temp = input("Enter current ambient temperature (°F) as an integer: " )
+    # current_resin_temp = input("Enter current resin tempurate (°F) as an integer: ")
+    # current_resin_age = input("Enter current number of days since opening resin container as an integer: ")
+    #
+    # c_t = {
+    #     "ambient_temp" : current_ambient_temp,
+    #     "resin_temp" : current_resin_age,
+    #     "resin_age" : current_resin_age,
+    # }
     
     #---- BayesOpt Initial Exporlation---
     model = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
     model.train_surrogate(X_train, y_train, verbose=True)
-    model.compute_bayes_opt(c_t, verbose=True)
+    model.evaluate_surrogate(X_test, y_test)
+    # model.compute_bayes_opt(c_t, verbose=True)
 
     
 

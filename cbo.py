@@ -102,7 +102,7 @@ class ContextualBayesOpt:
 
         return self.model
 
-    def evalute_surrogate(self, X_test, y_test):
+    def evaluate_surrogate(self, X_test, y_test):
         """
         Evaluate surrogate performance on a held-out test set.
 
