@@ -44,7 +44,7 @@ def load_features():
 def main():
 
     current_ambient_temp = input("Enter current ambient temperature (°F) as an integer: " )
-    current_resin_temp = input("Enter current resin tempurate (°F) as an integer: ")
+    current_resin_temp = input("Enter current resin temperature (°F) as an integer: ")
     current_resin_age = input("Enter current number of days since opening resin container as an integer: ")
    
     context_snapshot = {
@@ -53,7 +53,6 @@ def main():
         "resin_age" : current_resin_age,
     }
 
-    c_t = pd.DataFrame([context_snapshot])
     df_multi = load_dataset()
     features = load_features()
 
@@ -70,7 +69,7 @@ def main():
 
 
     #---Prep for surrogate training----
-    X = df_batches[features] + c_t # inputs + context_snapshot
+    X = df_batches[features] # inputs
     y = df_batches["cv"] # targets
 
     categorical = ["resin_type", "support_mode"]
@@ -102,7 +101,7 @@ def main():
     model = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
     model.train_surrogate(X_train, y_train, verbose=True)
     model.evaluate_surrogate(X_test, y_test)
-    # model.compute_bayes_opt(c_t, verbose=True)
+    model.compute_bayes_opt(context_snapshot, verbose=True)
 
 
 if __name__=='__main__':
