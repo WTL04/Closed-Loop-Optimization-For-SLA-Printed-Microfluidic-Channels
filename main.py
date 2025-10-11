@@ -11,8 +11,7 @@ import seaborn as sns
 from cbo import ContextualBayesOpt
 from visualize import visualize_control_chart, visualize_CV_Drift_relationship
 
-def main():
-
+def load_dataset():
     # Load the multi-batch dataset
     df_multi = pd.read_csv("datasets/multi_batch_channels_dataset.csv")
     df_context = pd.read_csv("datasets/sla_spc_flowrate_channels_13batches.csv")
@@ -22,10 +21,14 @@ def main():
     df_multi["resin_age"] = df_context["resin_age"]
     df_multi["ambient_temp"] = df_context["ambient_temp"]
 
-
-    #----Preprocess data----
     # drop unnessesary columns
     df_multi.drop(columns="channel_diameter_mm")
+
+    return df_multi
+
+
+def main():
+    df_multi = load_dataset()
 
     # Compute per-batch mean, std, CV
     batch_summary = df_multi.groupby("batch_id")["measured_flow_mL_per_min"].agg(["mean", "std"])
@@ -63,16 +66,8 @@ def main():
         ("rf", RandomForestRegressor(random_state=42))
     ])
 
-
+    # split train test data
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # user_input = input("Visualze Drift Relationship (1) or Control Chart (2)?: ")
-    #
-    # if user_input == 1:
-    #     visualize_CV_Drift_relationship(df_batches)
-    # elif user_input == 2:
-    #     visualize_control_chart(df_batches)
-    #
 
     # BO search space (knobs)
     pbounds = {
@@ -89,11 +84,14 @@ def main():
         "resin_temp": 76,      # °F, sensor reading
         "resin_age": 12.0,        # days since resin was opened
     } 
+
     
     #---- BayesOpt Initial Exporlation---
     model = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
     model.train_surrogate(X_train, y_train, verbose=True)
     model.compute_bayes_opt(c_t, verbose=True)
+
+    
 
     
 
