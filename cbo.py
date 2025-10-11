@@ -102,7 +102,7 @@ class ContextualBayesOpt:
 
         return self.model
 
-    def evalute_surrogate(self, X_test, y_test):
+    def evaluate_surrogate(self, X_test, y_test):
         """
         Evaluate surrogate performance on a held-out test set.
 
@@ -169,7 +169,7 @@ class ContextualBayesOpt:
         sig[sig < 1e-9] = 1e-9  # numerical stability
         return mu, sig
 
-    def _compute_ucb(self, x, lam=2.0):
+    def _compute_ucb(self, x, c_t=None, lam=2.0):
         """
         Compute the UCB acquisition value for a given input sample.
 
@@ -185,8 +185,13 @@ class ContextualBayesOpt:
         float
             Upper Confidence Bound (UCB) value.
         """
-        X1 = pd.DataFrame([x], columns=self.EXPECTED)
-        mu, sig = self._mu_sigma(X1)
+        if c_t is None:
+            if self.c_t is None:
+                raise ValueError("Current context c_t is not set.")
+            c_t = self.c_t
+
+        row = self._make_row(c_t, x)
+        mu, sig = self._mu_sigma(row)
         return mu[0] + lam * sig[0]
 
     # -------------------------------------------------------------------------
@@ -210,9 +215,7 @@ class ContextualBayesOpt:
         float
             Negative UCB score.
         """
-        row = self._make_row(self.c_t, x)
-        mu, sig = self._mu_sigma(row)
-        ucb = mu[0] + self.lam * sig[0]
+        ucb = self._compute_ucb(x)
         return -ucb  # BO maximizes → minimize UCB
 
     def compute_bayes_opt(self, c_t, verbose=False):
@@ -234,7 +237,7 @@ class ContextualBayesOpt:
         self.c_t = c_t
 
         optimizer = BayesianOptimization(
-            f=self.objective_ucb,
+            f=self.objective_ucb, # function reference 
             pbounds=self.pbounds,
             random_state=42,
         )
