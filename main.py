@@ -52,7 +52,7 @@ def main():
     baseline_cv = df_batches["cv"].mean()
 
 
-    #---Prep for model training----
+    #---Prep for surrogate training----
     X = df_batches[features] # inputs
     y = df_batches["cv"] # targets
 
