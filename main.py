@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as numpy
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
@@ -12,6 +12,10 @@ from cbo import ContextualBayesOpt
 from visualize import visualize_control_chart, visualize_CV_Drift_relationship
 
 def load_dataset():
+    """
+    Returns a preprocessed DataFrame of historical data
+    """
+
     # Load the multi-batch dataset
     df_multi = pd.read_csv("datasets/multi_batch_channels_dataset.csv")
     df_context = pd.read_csv("datasets/sla_spc_flowrate_channels_13batches.csv")
@@ -22,21 +26,34 @@ def load_dataset():
     df_multi["ambient_temp"] = df_context["ambient_temp"]
 
     # drop unnessesary columns
-    df_multi.drop(columns="channel_diameter_mm")
+    df_multi.drop(columns=["channel_diameter_mm"], inplace=True)
 
     return df_multi
 
 def load_features():
-    # Select features (fixed per batch)
+    """
+    Returns a list of knobs + context pertaining to the dataset
+    """
     knobs = ["resin_type", "layer_thickness_um", "orientation_deg", "support_mode", "fit_adjustment_pct"] # tunable knobs
     context = ["resin_age", "resin_temp", "ambient_temp"]  # drift context
-    print_output = ["channel_length_mm", "channel_width_mm"] # output data from 3d print
 
-    features = knobs + context # combine knobs with context
+    features = knobs + context
     return features
 
 
 def main():
+
+    current_ambient_temp = input("Enter current ambient temperature (°F) as an integer: " )
+    current_resin_temp = input("Enter current resin tempurate (°F) as an integer: ")
+    current_resin_age = input("Enter current number of days since opening resin container as an integer: ")
+   
+    context_snapshot = {
+        "ambient_temp" : current_ambient_temp,
+        "resin_temp" : current_resin_age,
+        "resin_age" : current_resin_age,
+    }
+
+    c_t = pd.DataFrame([context_snapshot])
     df_multi = load_dataset()
     features = load_features()
 
@@ -53,7 +70,7 @@ def main():
 
 
     #---Prep for surrogate training----
-    X = df_batches[features] # inputs
+    X = df_batches[features] + c_t # inputs + context_snapshot
     y = df_batches["cv"] # targets
 
     categorical = ["resin_type", "support_mode"]
@@ -81,32 +98,12 @@ def main():
         "support_mode": ("auto", "manual") # auto = 0, manual = 1, when encoded
     }
 
-    # # current context snapshot BEFORE a print (experimental)
-    # c_t = {
-    #     "ambient_temp": 72,    # °F, lab measurement
-    #     "resin_temp": 76,      # °F, sensor reading
-    #     "resin_age": 12.0,        # days since resin was opened
-    # }
-
-    # current_ambient_temp = input("Enter current ambient temperature (°F) as an integer: " )
-    # current_resin_temp = input("Enter current resin tempurate (°F) as an integer: ")
-    # current_resin_age = input("Enter current number of days since opening resin container as an integer: ")
-    #
-    # c_t = {
-    #     "ambient_temp" : current_ambient_temp,
-    #     "resin_temp" : current_resin_age,
-    #     "resin_age" : current_resin_age,
-    # }
-    
     #---- BayesOpt Initial Exporlation---
     model = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
     model.train_surrogate(X_train, y_train, verbose=True)
     model.evaluate_surrogate(X_test, y_test)
     # model.compute_bayes_opt(c_t, verbose=True)
 
-    
-
-    
 
 if __name__=='__main__':
     main()
