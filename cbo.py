@@ -146,6 +146,13 @@ class ContextualBayesOpt:
             One-row DataFrame with the correct schema for prediction.
         """
         row = {**c_t, **x}
+
+        # Ensure categorical fields exist and are strings
+        if "resin_type" not in row or pd.isna(row["resin_type"]):
+            row["resin_type"] = "Resin_A"
+        if "support_mode" not in row or pd.isna(row["support_mode"]):
+            row["support_mode"] = "auto"
+
         return pd.DataFrame([row], columns=self.EXPECTED)
 
     def _mu_sigma(self, df):
