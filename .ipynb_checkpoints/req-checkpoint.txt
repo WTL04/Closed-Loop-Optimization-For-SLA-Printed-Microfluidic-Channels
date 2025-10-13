@@ -1,0 +1,26 @@
+# data handling
+pandas
+numpy
+statprocon
+
+# data visualization
+matplotlib
+seaborn
+plotly 
+
+# ml libraries
+xgboost
+scikit-learn
+
+# adaptive development platform dependancies
+ax-platform
+bayesian-optimization
+nbformat
+ipython 
+kaleido
+botorch
+
+# auth 
+msal 
+python-dotenv
+requests
