@@ -156,11 +156,25 @@ def main(max_iterations=15, tolerance=0.005, simulate=True):
     for i in range(1, max_iterations + 1):
         print(f"\n========== Iteration {i} ==========")
 
+        # --- Simulate cooling and resin aging ---
+        if i == 1:
+            ambient_temp = 75.0       # starting ambient temp (°F)
+            resin_temp = 73.0         # starting resin temp (°F)
+            resin_age = 5.0           # starting resin age (days)
+        else:
+            # simulate gradual cooling and aging each iteration
+            ambient_temp -= 0.3       # ambient temperature drops slightly
+            resin_temp -= 0.25        # resin cools with environment
+            resin_age += np.random.uniform(0.5, 1.2)  # resin gets older
+
         c_new = {
-            "ambient_temp": np.random.uniform(68, 76),
-            "resin_temp": np.random.uniform(70, 74),
-            "resin_age": np.random.uniform(0, 30),
+            "ambient_temp": ambient_temp,
+            "resin_temp": resin_temp,
+            "resin_age": resin_age
         }
+
+        print(f"Context snapshot: {c_new}")
+
 
         best_params, _, _ = cbo.compute_bayes_opt(c_new, verbose=True)
         print("Suggested parameters:", best_params)
