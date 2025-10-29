@@ -12,7 +12,6 @@ Phase 2: Online / Closed-Loop Optimization
 - Visualize improvement across iterations
 """
 
-import os
 import time
 import numpy as np
 import pandas as pd
@@ -23,8 +22,9 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestRegressor
 from cbo import ContextualBayesOpt
 
+
 # ==========================================================
-#          Load & merge datasets like main.py 
+#          Load & merge datasets like main.py
 # ==========================================================
 def load_dataset():
     """Loads and merges both datasets into one clean DataFrame"""
@@ -43,13 +43,18 @@ def load_dataset():
 
 
 # ==========================================================
-#          Simulate (or run) a new print batch 
+#          Simulate (or run) a new print batch
 # ==========================================================
 def run_experiment(params, context, channels_per_batch=10, simulate=True):
     """Simulates a batch print for now; later replaced with real printer integration"""
     base_radius = params.get("channel_width_mm", 2.0) / 2.0
     resin_factor = 1.0 if params.get("resin_type", "Resin_A") == "Resin_A" else 0.92
-    mean_flow = resin_factor * (base_radius**4) / max(params.get("channel_length_mm", 30.0), 1.0) * 400.0
+    mean_flow = (
+        resin_factor
+        * (base_radius**4)
+        / max(params.get("channel_length_mm", 30.0), 1.0)
+        * 400.0
+    )
 
     lt = params.get("layer_thickness_um", 50)
     ori = params.get("orientation_deg", 45)
@@ -65,42 +70,57 @@ def run_experiment(params, context, channels_per_batch=10, simulate=True):
             noise = np.random.normal(0, 0.1 * mean_flow)
             flow = max(mean_flow + noise, 1e-6)
         else:
-            flow = float(input(f"Measured flow for channel {i+1}: "))
+            flow = float(input(f"Measured flow for channel {i + 1}: "))
 
-        rows.append({
-            "batch_id": batch_id,
-            "resin_type": params.get("resin_type", "Resin_A"),
-            "layer_thickness_um": params.get("layer_thickness_um", 50),
-            "orientation_deg": params.get("orientation_deg", 45),
-            "support_mode": params.get("support_mode", "auto"),
-            "fit_adjustment_pct": params.get("fit_adjustment_pct", 0.0),
-            "channel_length_mm": params.get("channel_length_mm", 40.0),
-            "channel_width_mm": params.get("channel_width_mm", 2.0),
-            "resin_temp": context["resin_temp"],
-            "ambient_temp": context["ambient_temp"],
-            "resin_age": context["resin_age"],
-            "channel_id": f"{batch_id}_CH{i+1:02d}",
-            "measured_flow_mL_per_min": flow
-        })
+        rows.append(
+            {
+                "batch_id": batch_id,
+                "resin_type": params.get("resin_type", "Resin_A"),
+                "layer_thickness_um": params.get("layer_thickness_um", 50),
+                "orientation_deg": params.get("orientation_deg", 45),
+                "support_mode": params.get("support_mode", "auto"),
+                "fit_adjustment_pct": params.get("fit_adjustment_pct", 0.0),
+                "channel_length_mm": params.get("channel_length_mm", 40.0),
+                "channel_width_mm": params.get("channel_width_mm", 2.0),
+                "resin_temp": context["resin_temp"],
+                "ambient_temp": context["ambient_temp"],
+                "resin_age": context["resin_age"],
+                "channel_id": f"{batch_id}_CH{i + 1:02d}",
+                "measured_flow_mL_per_min": flow,
+            }
+        )
     return pd.DataFrame(rows)
 
 
 # ==========================================================
-#             Compute CV & prep training data 
+#             Compute CV & prep training data
 # ==========================================================
 def retrain_surrogate(df_all):
     """Computes CV per batch, returns updated training data"""
-    summary = df_all.groupby("batch_id")["measured_flow_mL_per_min"].agg(["mean", "std"]).reset_index()
+    summary = (
+        df_all.groupby("batch_id")["measured_flow_mL_per_min"]
+        .agg(["mean", "std"])
+        .reset_index()
+    )
     summary["cv"] = summary["std"] / summary["mean"]
 
     features = [
-        "resin_type", "layer_thickness_um", "orientation_deg", "support_mode",
-        "fit_adjustment_pct", "channel_length_mm", "channel_width_mm",
-        "resin_temp", "ambient_temp", "resin_age"
+        "resin_type",
+        "layer_thickness_um",
+        "orientation_deg",
+        "support_mode",
+        "fit_adjustment_pct",
+        "channel_length_mm",
+        "channel_width_mm",
+        "resin_temp",
+        "ambient_temp",
+        "resin_age",
     ]
 
     df_batches = (
-        df_all.groupby("batch_id").first()[features].reset_index()
+        df_all.groupby("batch_id")
+        .first()[features]
+        .reset_index()
         .merge(summary[["batch_id", "cv"]], on="batch_id")
     )
 
@@ -109,7 +129,7 @@ def retrain_surrogate(df_all):
 
 
 # ==========================================================
-#                Main Closed-Loop Function 
+#                Main Closed-Loop Function
 # ==========================================================
 def main(max_iterations=15, tolerance=0.005, simulate=True):
     """Runs the closed-loop optimization until CV stops improving"""
@@ -118,21 +138,33 @@ def main(max_iterations=15, tolerance=0.005, simulate=True):
     df_hist = load_dataset()
 
     features = [
-        "resin_type", "layer_thickness_um", "orientation_deg", "support_mode",
-        "fit_adjustment_pct", "channel_length_mm", "channel_width_mm",
-        "resin_temp", "ambient_temp", "resin_age"
+        "resin_type",
+        "layer_thickness_um",
+        "orientation_deg",
+        "support_mode",
+        "fit_adjustment_pct",
+        "channel_length_mm",
+        "channel_width_mm",
+        "resin_temp",
+        "ambient_temp",
+        "resin_age",
     ]
     categorical = ["resin_type", "support_mode"]
     numerical = [f for f in features if f not in categorical]
 
-    preprocess = ColumnTransformer([
-        ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical),
-        ("num", StandardScaler(), numerical)
-    ])
-    pipeline = Pipeline([
-        ("preprocess", preprocess),
-        ("rf", RandomForestRegressor(random_state=42))
-    ])
+    preprocess = ColumnTransformer(
+        [
+            (
+                "cat",
+                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                categorical,
+            ),
+            ("num", StandardScaler(), numerical),
+        ]
+    )
+    pipeline = Pipeline(
+        [("preprocess", preprocess), ("rf", RandomForestRegressor(random_state=42))]
+    )
 
     pbounds = {
         "layer_thickness_um": (20, 100),
@@ -158,23 +190,22 @@ def main(max_iterations=15, tolerance=0.005, simulate=True):
 
         # --- Simulate cooling and resin aging ---
         if i == 1:
-            ambient_temp = 75.0       # starting ambient temp (°F)
-            resin_temp = 73.0         # starting resin temp (°F)
-            resin_age = 5.0           # starting resin age (days)
+            ambient_temp = 75.0  # starting ambient temp (°F)
+            resin_temp = 73.0  # starting resin temp (°F)
+            resin_age = 5.0  # starting resin age (days)
         else:
             # simulate gradual cooling and aging each iteration
-            ambient_temp -= 0.3       # ambient temperature drops slightly
-            resin_temp -= 0.25        # resin cools with environment
+            ambient_temp -= 0.3  # ambient temperature drops slightly
+            resin_temp -= 0.25  # resin cools with environment
             resin_age += np.random.uniform(0.5, 1.2)  # resin gets older
 
         c_new = {
             "ambient_temp": ambient_temp,
             "resin_temp": resin_temp,
-            "resin_age": resin_age
+            "resin_age": resin_age,
         }
 
         print(f"Context snapshot: {c_new}")
-
 
         best_params, _, _ = cbo.compute_bayes_opt(c_new, verbose=True)
         print("Suggested parameters:", best_params)
@@ -208,7 +239,9 @@ def main(max_iterations=15, tolerance=0.005, simulate=True):
 
     # === Visualization ===
     plt.figure(figsize=(7, 4))
-    plt.plot(range(len(cv_history)), cv_history, marker='o', linestyle='-', color='teal')
+    plt.plot(
+        range(len(cv_history)), cv_history, marker="o", linestyle="-", color="teal"
+    )
     plt.title("Flow Rate CV Improvement Across Iterations")
     plt.xlabel("Iteration")
     plt.ylabel("Coefficient of Variation (CV)")
