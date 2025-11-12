@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-phase2_closed_loop.py
+cbo_closed_loop.py
 ----------------------------------------
-Phase 2: Online / Closed-Loop Optimization
+Online / Closed-Loop Optimization
 - Observe new context
 - Suggest next set of print parameters
 - Run experiment (simulate or real)
@@ -21,7 +21,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestRegressor
 from cbo import ContextualBayesOpt
-
+from visualize import visualize_model_convergence
 
 # ==========================================================
 #          Load & merge datasets like main.py
@@ -241,25 +241,8 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         all_histories.append(cv_history)
 
     # --- Visualization ---
-    plt.figure(figsize=(8, 4.5))
-    for idx, hist in enumerate(all_histories):
-        plt.plot(
-            range(len(hist)), hist, marker="o", linestyle="-", label=f"Run {idx + 1}"
-        )
+    visualize_model_convergence(all_histories)
 
-        # highlight best point
-        best_i = np.argmin(hist)
-        plt.scatter(best_i, min(hist), color="red", marker="*", s=120)
-
-    plt.title(
-        "Flow Rate CV Improvement Across Iterations (Fixed Context: Warm Room Temp, 5-Day Resin)"
-    )
-    plt.xlabel("Iteration")
-    plt.ylabel("Coefficient of Variation (CV)")
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend(title="Independent Runs")
-    plt.tight_layout()
-    plt.show()
 
 
 if __name__ == "__main__":
