@@ -1,3 +1,6 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
 def visualize_control_chart(df_batches):
     plt.figure(figsize=(10,5))
     plt.plot(range(1, len(df_batches)+1), df_batches["cv"], marker="o", linestyle="-", label="Batch CVs")
@@ -23,7 +26,7 @@ def visualize_cv_drift_relationship(df_batches):
         plt.ylabel("CV")
         plt.show()
 
-def visualize_cv_histories(all_histories):
+def visualize_model_convergence(all_histories):
     plt.figure(figsize=(8, 4.5))
     for idx, hist in enumerate(all_histories):
         plt.plot(

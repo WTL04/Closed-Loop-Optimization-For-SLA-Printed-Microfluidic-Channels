@@ -21,7 +21,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestRegressor
 from cbo import ContextualBayesOpt
-from visualize import visualize_cv_histories
+from visualize import visualize_model_convergence
 
 # ==========================================================
 #          Load & merge datasets like main.py
@@ -241,7 +241,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         all_histories.append(cv_history)
 
     # --- Visualization ---
-    visualize_cv_histories(all_histories)
+    visualize_model_convergence(all_histories)
 
 
 
