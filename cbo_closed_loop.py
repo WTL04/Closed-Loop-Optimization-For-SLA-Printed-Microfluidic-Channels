@@ -15,7 +15,6 @@ Online / Closed-Loop Optimization
 import time
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
@@ -23,8 +22,9 @@ from sklearn.ensemble import RandomForestRegressor
 from cbo import ContextualBayesOpt
 from visualize import visualize_model_convergence
 
+
 # ==========================================================
-#          Load & merge datasets like main.py
+#          Load & merge datasets
 # ==========================================================
 def load_dataset():
     """Loads and merges both datasets into one clean DataFrame"""
@@ -95,7 +95,7 @@ def run_experiment(params, context, channels_per_batch=10, simulate=True):
 # ==========================================================
 #             Compute CV & prep training data
 # ==========================================================
-def retrain_surrogate(df_all):
+def update_training_data(df_all):
     """Computes CV per batch, returns updated training data"""
     summary = (
         df_all.groupby("batch_id")["measured_flow_mL_per_min"]
@@ -186,7 +186,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         )
 
         pbounds = {
-            "layer_thickness_um": (20, 100),
+            "layer_thickness_um": (50, 100),
             "orientation_deg": (0, 90),
             "fit_adjustment_pct": (-2.0, 2.0),
             "channel_length_mm": (20, 60),
@@ -196,26 +196,26 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         cbo = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
 
         # Train on historical dataset
-        X, y, df_batches = retrain_surrogate(df_hist)
-        cbo.train_surrogate(X, y, verbose=False)
+        X, y, df_batches = update_training_data(df_hist)
+        cbo.train_surrogate(X, y, verbose=True)
         print(f"Loaded dataset with {len(df_batches)} batches.")
 
         prev_cv = df_batches["cv"].iloc[-1]
-        stable_count = 0
         cv_history = [prev_cv]
+        # stable_count = 0
 
         # --- Optimization loop with early stopping---
         for i in range(1, max_iterations + 1):
             print(f"\n--- Iteration {i} ---")
             print(f"Context snapshot: {c_new}")
 
-            best_params, _, _ = cbo.compute_bayes_opt(c_new, verbose=False)
+            best_params, _, _ = cbo.compute_bayes_opt(c_new, verbose=True)
             print("Suggested parameters:", best_params)
 
             df_batch = run_experiment(best_params, c_new, simulate=simulate)
             df_hist = pd.concat([df_hist, df_batch], ignore_index=True)
 
-            X, y, df_batches = retrain_surrogate(df_hist)
+            X, y, df_batches = update_training_data(df_hist)
             cbo.train_surrogate(X, y, verbose=False)
 
             new_cv = df_batches["cv"].iloc[-1]
@@ -226,23 +226,22 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
                 f"Previous CV: {prev_cv:.4f}, New CV: {new_cv:.4f}, ΔCV: {cv_change:.4f}"
             )
 
-            if abs(cv_change) < tolerance:
-                stable_count += 1
-                print(f"No significant improvement ({stable_count}/3)")
-            else:
-                stable_count = 0
-
-            prev_cv = new_cv
-
-            if stable_count >= 3:
-                print("CV stabilized; stopping early.")
-                break
+            # if abs(cv_change) < tolerance:
+            #     stable_count += 1
+            #     print(f"No significant improvement ({stable_count}/3)")
+            # else:
+            #     stable_count = 0
+            #
+            # prev_cv = new_cv
+            #
+            # if stable_count >= 3:
+            #     print("CV stabilized; stopping early.")
+            #     break
 
         all_histories.append(cv_history)
 
     # --- Visualization ---
     visualize_model_convergence(all_histories)
-
 
 
 if __name__ == "__main__":
