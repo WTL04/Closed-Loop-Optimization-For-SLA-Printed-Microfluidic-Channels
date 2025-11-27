@@ -185,12 +185,16 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
             ]
         )
 
+        # TODO: Encode layer_thickness_um and fit_adjustment_pct into discrete options
+        # discrete parameter values
+        LAYER_VALUES = [50, 100]
+        FIT_VALUES = [-250, -150, -50, 0, 50, 150, 250]
+
+        # available parameter search space
         pbounds = {
-            "layer_thickness_um": (50, 100),
-            "orientation_deg": (0, 90),
-            "fit_adjustment_pct": (-2.0, 2.0),
-            "channel_length_mm": (20, 60),
-            "channel_width_mm": (1.0, 4.0),
+            "layer_thickness_um": (0, len(LAYER_VALUES) - 1),
+            "fit_adjustment_pct": (0, len(FIT_VALUES) - 1),
+            "z_rotation": (0, 90),
         }
 
         cbo = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
@@ -204,7 +208,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         cv_history = [prev_cv]
         # stable_count = 0
 
-        # --- Optimization loop with early stopping---
+        # --- Optimization loop with early stopping, using Probability of Improvment metric---
         for i in range(1, max_iterations + 1):
             print(f"\n--- Iteration {i} ---")
             print(f"Context snapshot: {c_new}")
