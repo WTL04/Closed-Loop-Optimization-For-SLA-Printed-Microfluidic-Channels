@@ -1,6 +1,6 @@
 import pandas as pd
-import numpy as np
 from typing import Optional
+from lab_runner import LabRunner
 
 from ax.core import (
     SearchSpace,
@@ -8,6 +8,7 @@ from ax.core import (
     Metric,
     Objective,
     OptimizationConfig,
+    ParameterType,
 )
 from ax.core.arm import Arm
 from ax.core.data import Data
@@ -33,7 +34,7 @@ class ContextualBayesOptAx:
     def __init__(
         self,
         search_space: SearchSpace,
-        metric_name: str = "cv",
+        metric_name: str = "flow_rate_per_min",
         minimize: bool = True,
         generation_strategy: Optional[GenerationStrategy] = None,
         experiment_name: str = "cbo",
@@ -55,6 +56,7 @@ class ContextualBayesOptAx:
         self.search_space = search_space
         self.metric_name = metric_name
         self.minimize = minimize
+        self.runner = LabRunner()
 
         # initialize Ax experiment with objective configuration
         self.experiment = Experiment(
@@ -65,6 +67,7 @@ class ContextualBayesOptAx:
                     metric=Metric(name=self.metric_name), minimize=self.minimize
                 )
             ),
+            runner=self.runner,
         )
 
         # GenerationStrategy: Sobol warmup -> BoTorch modular GP BO
@@ -119,25 +122,38 @@ class ContextualBayesOptAx:
         param_names = list(self.search_space.parameters.keys())
         records = []
 
-        for _, row in df.iterrows():
-            params = {name: row[name] for name in param_names}
+        for row in df.itertuples(index=False):
+            # ensure data types persist
+            params = {}
+            for name in param_names:
+                p = self.search_space.parameters[name]
+                val = getattr(row, name)
+
+                if p.parameter_type is ParameterType.INT:
+                    params[name] = int(val)
+                elif p.parameter_type is ParameterType.FLOAT:
+                    params[name] = float(val)
+                else:
+                    params[name] = val
+
             arm = Arm(parameters=params)
 
             # initilaize an trial and add metrics of trial into records
             trial = self.experiment.new_trial()
             trial.add_arm(arm)
-            trial.mark_running()
+
+            metric_val = getattr(row, self.metric_name)
+
             records.append(
                 {
                     "trial_index": trial.index,
                     "arm_name": arm.name,
                     "metric_name": self.metric_name,
-                    "mean": float(row[self.metric_name]),
+                    "metric_signature": self.metric_name,
+                    "mean": float(metric_val),
                     "sem": 0.0,
                 }
             )
-
-            trial.mark_completed()
 
         # attach metric values from each trial for surrogate to train on
         data = Data(df=pd.DataFrame.from_records(records))
@@ -158,18 +174,18 @@ class ContextualBayesOptAx:
         """
 
         # TODO: adjust suggest(c_t) with new version of generation_strategy
-        context = FixedFeatures(parameters=c_t)
+        # context = FixedFeatures(parameters=c_t)
 
-        generator_run = self.generation_strategy.gen(
-            experiment=self.experiment,
-            fixed_features=context,
-        )
-
-        trial = self.experiment.new_trial(generator_run)
-        trial.mark_running()
-
-        arm = trial.arms[0]  # pick first arm
-        return {"trial": trial, "params": arm.parameters}
+        # generator_run = self.generation_strategy.gen(
+        #     experiment=self.experiment,
+        #     fixed_features=context,
+        # )
+        #
+        # trial = self.experiment.new_trial(generator_run)
+        # trial.mark_running()
+        #
+        # arm = trial.arms[0]  # pick first arm
+        # return {"trial": trial, "params": arm.parameters}
 
     def observe(self, trial, metric_value: float):
         """
