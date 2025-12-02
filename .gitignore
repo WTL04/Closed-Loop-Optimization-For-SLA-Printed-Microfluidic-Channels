@@ -3,3 +3,4 @@ venv/
 venv310/
 .ipynb_checkpoints/
 __pycache__
+google_sheets_creds.json
