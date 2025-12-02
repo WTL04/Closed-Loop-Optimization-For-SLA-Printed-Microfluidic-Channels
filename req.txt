@@ -25,3 +25,8 @@ botorch
 msal 
 python-dotenv
 requests
+
+# google sheets 
+gspread
+gspread-dataframe
+google-auth
