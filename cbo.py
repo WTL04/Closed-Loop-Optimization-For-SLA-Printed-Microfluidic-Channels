@@ -145,13 +145,17 @@ class ContextualBayesOpt:
         pd.DataFrame
             One-row DataFrame with the correct schema for prediction.
         """
+        if self.EXPECTED is None:
+            self._build_schema()
         row = {**c_t, **x}
 
         # Ensure categorical fields exist and are strings
         if "resin_type" not in row or pd.isna(row["resin_type"]):
             row["resin_type"] = "Resin_A"
-        if "support_mode" not in row or pd.isna(row["support_mode"]):
-            row["support_mode"] = "auto"
+
+        if "layer_thickness_um" in x:
+            lt_code = int(round(x["layer_thickness_um"]))
+            x["layer_thickness_um"] = 50 if lt_code == 0 else 100
 
         return pd.DataFrame([row], columns=self.EXPECTED)
 
@@ -169,6 +173,11 @@ class ContextualBayesOpt:
         tuple (np.ndarray, np.ndarray)
             Mean and standard deviation of predictions.
         """
+        if self.pre is None or self.rf is None:
+            raise RuntimeError(
+                "Surrogate not initialized. Call train_surrogate() or set a fitted pipeline."
+            )
+
         Xt = self.pre.transform(df)
         preds = np.vstack([t.predict(Xt) for t in self.rf.estimators_])
         mu = preds.mean(axis=0)
@@ -176,7 +185,7 @@ class ContextualBayesOpt:
         sig[sig < 1e-9] = 1e-9  # numerical stability
         return mu, sig
 
-    def _compute_ucb(self, x, c_t=None, lam=2.0):
+    def _compute_ucb(self, x, c_t=None, lam=None):
         """
         Compute the UCB acquisition value for a given input sample.
 
@@ -196,6 +205,9 @@ class ContextualBayesOpt:
             if self.c_t is None:
                 raise ValueError("Current context c_t is not set.")
             c_t = self.c_t
+
+        if lam is None:
+            lam = self.lam
 
         row = self._make_row(c_t, x)
         mu, sig = self._mu_sigma(row)
@@ -223,9 +235,9 @@ class ContextualBayesOpt:
             Negative UCB score.
         """
         ucb = self._compute_ucb(x)
-        return -ucb  # BO maximizes → minimize UCB
+        return -ucb  # minimize flow error
 
-    def compute_bayes_opt(self, c_t, verbose=False):
+    def compute_bayes_opt(self, c_t, init_points=5, n_iter=20, verbose=False):
         """
         Run Bayesian Optimization loop to find optimal knob settings.
 
@@ -244,16 +256,20 @@ class ContextualBayesOpt:
         self.c_t = c_t
 
         optimizer = BayesianOptimization(
-            f=self.objective_ucb, # function reference 
+            f=self.objective_ucb,  # function reference
             pbounds=self.pbounds,
             random_state=42,
         )
 
-        optimizer.maximize(init_points=5, n_iter=20)
+        optimizer.maximize(init_points=init_points, n_iter=n_iter)
 
         best_result = optimizer.max
         best_params = best_result["params"]
-        best_ucb = -best_result["target"]
+        best_params["layer_thickness_um"] = 50 if best_params["layer_thickness_um"] < 0.5 else 100
+        best_neg_ucb = best_result["target"]  # maximized value of (-UCB)
+        best_ucb = (
+            -best_neg_ucb
+        )  # turned positive for analysis, higher ucb here means better
 
         if verbose:
             print("Best parameters found:")
@@ -261,5 +277,12 @@ class ContextualBayesOpt:
             print("\nBest UCB score:")
             print(best_ucb)
 
-        return best_params, best_ucb, optimizer
+        # --- Decode categorical layer thickness ---
+        best_params["layer_thickness_um"] = 50 if int(best_params["layer_thickness_um"]) == 0 else 100
+
+        # --- Snap fit_adjustment to nearest allowed real printer option ---
+        allowed_fits = [-250, -150, -50, 0, 50, 150, 250]
+        best_params["fit_adjustment_pct"] = min(allowed_fits, key=lambda x: abs(x - best_params["fit_adjustment_pct"]))
+
+        return best_params, optimizer.max, optimizer.res
 
