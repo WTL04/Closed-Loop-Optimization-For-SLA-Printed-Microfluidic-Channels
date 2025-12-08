@@ -1,6 +1,7 @@
 import time
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from ax.core import (
     SearchSpace,
@@ -25,12 +26,14 @@ def build_search_space():
                 parameter_type=ParameterType.INT,
                 values=[50, 100],
                 is_ordered=True,
+                sort_values=True,
             ),
             ChoiceParameter(
                 name="fit_adjustment_pct",
                 parameter_type=ParameterType.INT,
                 values=[-250, -150, -50, 0, 50, 150, 250],
                 is_ordered=True,
+                sort_values=True,
             ),
             RangeParameter(
                 name="z_rotation_deg",
@@ -72,9 +75,18 @@ def main():
 
     # TODO: apply cbo.suggest(), cbo.observe, and cbo.best_point after finish implmenenting
     # to test out functions
-    cbo.suggest(c_new)
+    suggested = cbo.suggest(c_new)
+    params = suggested["params"]
+    print(params)
 
     # TODO: visualize cbo's improvment with plotting
+    trace = cbo.optimization_trace()
+    print(trace)
+
+    plt.plot(trace["trial_index"], trace["best_so_far"])
+    plt.xlabel("Trial")
+    plt.ylabel("Best flow_rate_per_min so far")
+    plt.show()
 
 
 main()

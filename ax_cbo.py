@@ -1,5 +1,7 @@
 import pandas as pd
 from typing import Optional
+
+from torch import ge
 from lab_runner import LabRunner
 
 from ax.core import (
@@ -141,6 +143,7 @@ class ContextualBayesOptAx:
             # initilaize an trial and add metrics of trial into records
             trial = self.experiment.new_trial()
             trial.add_arm(arm)
+            trial.mark_running(no_runner_required=True)  # mark trial as running
 
             metric_val = getattr(row, self.metric_name)
 
@@ -151,7 +154,7 @@ class ContextualBayesOptAx:
                     "metric_name": self.metric_name,
                     "metric_signature": self.metric_name,
                     "mean": float(metric_val),
-                    "sem": 0.0,
+                    "sem": 1e-6,
                 }
             )
 
@@ -161,7 +164,12 @@ class ContextualBayesOptAx:
         # append Data object into experiment Dataframe
         self.experiment.attach_data(data)
 
-    def suggest(self, c_t: dict) -> dict:
+        # mark all trials as completed
+        for trial in self.experiment.trials.values():
+            if trial.status.is_running:
+                trial.mark_completed()
+
+    def suggest(self, c_t):
         """Suggests knob settings given a context snapshot
 
         Args:
@@ -176,16 +184,24 @@ class ContextualBayesOptAx:
         # TODO: adjust suggest(c_t) with new version of generation_strategy
         # context = FixedFeatures(parameters=c_t)
 
-        # generator_run = self.generation_strategy.gen(
-        #     experiment=self.experiment,
-        #     fixed_features=context,
-        # )
-        #
-        # trial = self.experiment.new_trial(generator_run)
-        # trial.mark_running()
-        #
-        # arm = trial.arms[0]  # pick first arm
-        # return {"trial": trial, "params": arm.parameters}
+        # returns a list of GeneratorRun objects
+        result = self.generation_strategy.gen(
+            experiment=self.experiment,
+            n=1,
+        )
+
+        # Handle both list and single GeneratorRun returns
+        generator_run = result[0][0]
+
+        trial = self.experiment.new_trial(generator_run=generator_run)
+        arm = trial.arms[0]
+        # merged_params = {
+        #     **arm.parameters,
+        #     **c_t,
+        # }  # override context params in arm with new context
+        trial.run()
+
+        return {"trial": trial, "params": arm.parameters}
 
     def observe(self, trial, metric_value: float):
         """
@@ -214,18 +230,31 @@ class ContextualBayesOptAx:
         self.experiment.attach_data(data)
         trial.mark_completed()
 
-    def best_point(self):
+    def optimization_trace(self) -> pd.DataFrame:
         """
-        Return the best parameterization according to the current Ax surrogate.
-
-        Uses the model inside the GenerationStrategy, so you must have:
-        - run suggest() at least once,
-        - attached some observations via add_historical() and/or observe().
-
-        Returns:
-            dict with:
-                - "params": best arm parameters (dict)
-                - "mean": predicted mean metric at that point
-                - "sem": predicted SEM at that point
+        Returns a DataFrame with:
+        - trial_index
+        - mean: metric value per trial
+        - best_so_far: running best (min or max depending on self.minimize)
         """
-        # TODO: implement getting the best point using github version of Ax
+        df = self.experiment.fetch_data().df
+
+        # keep only the metric of interest
+        df = df[df["metric_name"] == self.metric_name]
+
+        # one value per trial (average in case you ever record multiple rows per trial)
+        vals = df.groupby("trial_index")["mean"].mean().sort_index()
+
+        if self.minimize:
+            best = vals.cummin()
+        else:
+            best = vals.cummax()
+
+        trace = pd.DataFrame(
+            {
+                "trial_index": vals.index,
+                "mean": vals.values,
+                "best_so_far": best.values,
+            }
+        )
+        return trace
