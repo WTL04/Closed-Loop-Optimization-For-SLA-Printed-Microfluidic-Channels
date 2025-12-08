@@ -20,6 +20,7 @@ from ax.generation_strategy.generation_node import GenerationNode
 from ax.generation_strategy.generator_spec import GeneratorSpec
 from ax.generation_strategy.transition_criterion import MinTrials
 from ax.service.utils.instantiation import FixedFeatures
+from ax.core.observation import ObservationFeatures
 
 
 # TODO: Implement CBO with AX platform
@@ -169,7 +170,7 @@ class ContextualBayesOptAx:
             if trial.status.is_running:
                 trial.mark_completed()
 
-    def suggest(self, c_t):
+    def suggest(self, isOnline: bool, c_t: dict):
         """Suggests knob settings given a context snapshot
 
         Args:
@@ -184,9 +185,12 @@ class ContextualBayesOptAx:
         # TODO: adjust suggest(c_t) with new version of generation_strategy
         # context = FixedFeatures(parameters=c_t)
 
+        context = ObservationFeatures(parameters=c_t)
+
         # returns a list of GeneratorRun objects
         result = self.generation_strategy.gen(
             experiment=self.experiment,
+            fixed_features=context,
             n=1,
         )
 
@@ -195,11 +199,8 @@ class ContextualBayesOptAx:
 
         trial = self.experiment.new_trial(generator_run=generator_run)
         arm = trial.arms[0]
-        # merged_params = {
-        #     **arm.parameters,
-        #     **c_t,
-        # }  # override context params in arm with new context
-        trial.run()
+        if isOnline:
+            trial.run()
 
         return {"trial": trial, "params": arm.parameters}
 
@@ -227,7 +228,7 @@ class ContextualBayesOptAx:
             ]
         )
         data = Data(df=df)
-        self.experiment.attach_data(data)
+        self.experiment.attach_data(data)  # attach new learned data to the experiment
         trial.mark_completed()
 
     def optimization_trace(self) -> pd.DataFrame:
