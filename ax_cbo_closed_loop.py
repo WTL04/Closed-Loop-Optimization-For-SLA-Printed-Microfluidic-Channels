@@ -14,6 +14,8 @@ from ax.generation_strategy.generation_node import GenerationNode
 from ax.generation_strategy.generator_spec import GeneratorSpec
 from ax_cbo import ContextualBayesOptAx
 
+from sheets_api import pullData
+
 
 def build_search_space():
     """
@@ -29,7 +31,7 @@ def build_search_space():
                 sort_values=True,
             ),
             ChoiceParameter(
-                name="fit_adjustment_pct",
+                name="fit_adjustment",
                 parameter_type=ParameterType.INT,
                 values=[-250, -150, -50, 0, 50, 150, 250],
                 is_ordered=True,
@@ -46,15 +48,18 @@ def build_search_space():
     return search_space
 
 
-def load_dataset():
-    return pd.read_csv("./datasets/dataset.csv")
+def load_dataset(is_testing: bool):
+    if is_testing:
+        return pd.read_csv("./datasets/dataset.csv")
+
+    return pullData(verbose=True)
 
 
 def main():
     # fixed context snapshot
-    ambient_temp = 75.0  # °F
-    resin_temp = 73.0  # °F
-    resin_age = 5.0  # days
+    ambient_temp = 70.0  # °F
+    resin_temp = 70.0  # °F
+    resin_age = 11.0  # hours
 
     c_new = {
         "ambient_temp": ambient_temp,
@@ -65,21 +70,24 @@ def main():
     # initialzing CBO search_space and experiment
     search_space = build_search_space()
     cbo = ContextualBayesOptAx(
-        search_space=search_space, metric_name="flow_rate_per_min", minimize=True
+        search_space=search_space,
+        metric_name="channel_flow_rate_ml_per_min",
+        minimize=True,
     )
 
     # initilaize historical data
-    df = load_dataset()
+    df = load_dataset(is_testing=True)
     cbo.add_historical(df)
     print("Loaded Dataset into CBO surrogate")
 
-    # TODO: apply cbo.suggest(), cbo.observe, and cbo.best_point after finish implmenenting
-    # to test out functions
-    suggested = cbo.suggest(c_new)
+    # TODO: apply cbo.suggest() after finish implmenenting to test out functions
+    suggested = cbo.suggest(isOnline=True, c_t=c_new)  # online loop for testing
     params = suggested["params"]
     print(params)
 
-    # TODO: visualize cbo's improvment with plotting
+    # TODO: use cbo.observe() to append newly learned data back into the CBO's experiment
+
+    # visualize cbo's improvment with plotting
     trace = cbo.optimization_trace()
     print(trace)
 
