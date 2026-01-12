@@ -48,7 +48,7 @@ def build_search_space():
     return search_space
 
 
-def load_dataset(is_testing: bool):
+def load_dataset(is_testing: bool, verbose=True):
     """
     Returns Dataframe from Google Spreadsheet or fake dataset
 
@@ -59,7 +59,7 @@ def load_dataset(is_testing: bool):
     if is_testing:
         return pd.read_csv("../datasets/dataset.csv")
 
-    return pullData(verbose=True)
+    return pullData(verbose=verbose)
 
 
 def linear_context_change(c_new, strength=2):
@@ -72,10 +72,22 @@ def linear_context_change(c_new, strength=2):
 
 
 def main():
-    # fixed context snapshot, debug
-    ambient_temp = 80.0  # °F
-    resin_temp = 80.0  # °F
-    resin_age = 15.0  # hours
+    user_input = input(
+        "1) Manually input context snapshot 2) Use fixed testing context snapshot: "
+    )
+    if user_input == "1":
+        ambient_temp = input("ambient_temp (°F): ")
+        resin_temp = input("resin_temp (°F): ")
+        resin_age = input("resin_age (estimated hours since opened): ")
+
+    elif user_input == "2":
+        # fixed context snapshot, debug
+        ambient_temp = 80.0  # °F
+        resin_temp = 80.0  # °F
+        resin_age = 15.0  # hours
+    else:
+        print("not an option")
+        return
 
     c_new = {
         "ambient_temp": ambient_temp,
@@ -92,7 +104,7 @@ def main():
     )
 
     # initilaize historical data
-    df = load_dataset(is_testing=True)  # pulling fake data for now
+    df = load_dataset(is_testing=False, verbose=True)  # pulling fake data for now
     cbo.add_historical(df)
     print("Loaded Dataset into CBO surrogate")
 
@@ -101,6 +113,10 @@ def main():
 
     # auto add suggested parameters and context snapshot into spreadsheet
     append_row(suggested_params, c_new)
+
+    user_check = input("Did the print finish? (y/n) ")
+    if user_check == "n" or user_check == "N":
+        return
 
     user_check = input("Did you record the resulting CV into the spreadsheet? (y/n) ")
     if user_check == "n" or user_check == "N":
