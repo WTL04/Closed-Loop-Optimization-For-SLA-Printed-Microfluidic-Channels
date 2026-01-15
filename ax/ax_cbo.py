@@ -181,10 +181,6 @@ class ContextualBayesOptAx:
             dict
                 Suggested paramterization (knobs + fixed context)
         """
-
-        # TODO: adjust suggest(c_t) with new version of generation_strategy
-        # context = FixedFeatures(parameters=c_t)
-
         context = ObservationFeatures(parameters=c_t)
 
         # returns a list of GeneratorRun objects

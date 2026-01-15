@@ -14,7 +14,11 @@ from ax.generation_strategy.generation_node import GenerationNode
 from ax.generation_strategy.generator_spec import GeneratorSpec
 from ax_cbo import ContextualBayesOptAx
 
-from sheets_api import pullData, get_latest_cv, append_row
+from sheets_api import pullData, get_latest_col_value, append_row
+
+# set default values to global vars
+BATCH_ID = 1
+CHANNEL_ID = 1
 
 
 def build_search_space():
@@ -72,67 +76,83 @@ def linear_context_change(c_new, strength=2):
 
 
 def main():
-    user_input = input(
+    # ---- context ----
+    choice = input(
         "1) Manually input context snapshot 2) Use fixed testing context snapshot: "
     )
-    if user_input == "1":
-        ambient_temp = input("ambient_temp (°F): ")
-        resin_temp = input("resin_temp (°F): ")
-        resin_age = input("resin_age (estimated hours since opened): ")
-
-    elif user_input == "2":
-        # fixed context snapshot, debug
-        ambient_temp = 80.0  # °F
-        resin_temp = 80.0  # °F
-        resin_age = 15.0  # hours
+    if choice == "1":
+        c_new = {
+            "ambient_temp": float(input("ambient_temp (°F): ")),
+            "resin_temp": float(input("resin_temp (°F): ")),
+            "resin_age": float(input("resin_age (estimated hours since opened): ")),
+        }
+    elif choice == "2":
+        c_new = {
+            "ambient_temp": 80.0,
+            "resin_temp": 80.0,
+            "resin_age": 15.0,
+        }
     else:
         print("not an option")
         return
 
-    c_new = {
-        "ambient_temp": ambient_temp,
-        "resin_temp": resin_temp,
-        "resin_age": resin_age,
-    }
-
-    # initialzing CBO search_space and experiment
-    search_space = build_search_space()
+    # ---- Ax init ----
     cbo = ContextualBayesOptAx(
-        search_space=search_space,
+        search_space=build_search_space(),
         metric_name="channel_flow_rate_ml_per_min",
         minimize=True,
     )
 
-    # initilaize historical data
-    df = load_dataset(is_testing=False, verbose=True)  # pulling fake data for now
+    # ---- data source ----
+    choice = input("1) Use Google Sheets Data 2) Use fake testing data: ")
+    if choice == "1":
+        use_real_data = True
+        df = load_dataset(is_testing=False, verbose=True)
+    elif choice == "2":
+        use_real_data = False
+        df = load_dataset(is_testing=True, verbose=True)
+    else:
+        print("not an option")
+        return
+
     cbo.add_historical(df)
     print("Loaded Dataset into CBO surrogate")
 
-    trial = cbo.suggest(isOnline=True, c_t=c_new)["trial"]  # online loop for testing
+    # ---- suggest ----
+    trial = cbo.suggest(isOnline=True, c_t=c_new)["trial"]
+
+    if not use_real_data:
+        print("Fake mode: suggestion only")
+        return
+
     suggested_params = trial.arms[0].parameters
 
-    # auto add suggested parameters and context snapshot into spreadsheet
-    append_row(suggested_params, c_new)
+    # ---- metadata ----
+    batch_raw = get_latest_col_value("batch_id")
+    channel_raw = get_latest_col_value("channel_id")
+    batch_id = int(batch_raw) if batch_raw is not None else 1
+    channel_id = int(channel_raw) if channel_raw is not None else 1
+    if channel_id >= 13:
+        batch_id += 1
+        channel_id = 1
+    else:
+        channel_id += 1
 
-    user_check = input("Did the print finish? (y/n) ")
-    if user_check == "n" or user_check == "N":
+    append_row(batch_id, channel_id, suggested_params, c_new)
+
+    if input("Did the print finish? (y/n) ").lower() == "n":
+        return
+    if (
+        input("Did you record the resulting CV into the spreadsheet? (y/n) ").lower()
+        == "n"
+    ):
         return
 
-    user_check = input("Did you record the resulting CV into the spreadsheet? (y/n) ")
-    if user_check == "n" or user_check == "N":
-        return
+    cv = float(get_latest_col_value("channel_flow_rate_ml_per_min"))
+    cbo.observe(trial=trial, metric_value=cv)
 
-    # GET recorded CV from Spreadsheet
-    cv = get_latest_cv("channel_flow_rate_ml_per_min")
-
-    # TODO: testing observe function
-    cbo.observe(
-        trial=trial, metric_value=cv
-    )  # input resulting CV, mark trial as complete
-
-    # visualize convergence
+    # ---- visualize convergence ----
     trace = cbo.optimization_trace()
-    print(trace)  # debug
     plt.plot(trace["trial_index"], trace["best_so_far"])
     plt.title("CBO trial convergence")
     plt.xlabel("Trial")
