@@ -152,8 +152,10 @@ class ContextualBayesOpt:
         # Ensure categorical fields exist and are strings
         if "resin_type" not in row or pd.isna(row["resin_type"]):
             row["resin_type"] = "Resin_A"
-        if "support_mode" not in row or pd.isna(row["support_mode"]):
-            row["support_mode"] = "auto"
+
+        if "layer_thickness_um" in x:
+            lt_code = int(round(x["layer_thickness_um"]))
+            x["layer_thickness_um"] = 50 if lt_code == 0 else 100
 
         return pd.DataFrame([row], columns=self.EXPECTED)
 
@@ -263,6 +265,7 @@ class ContextualBayesOpt:
 
         best_result = optimizer.max
         best_params = best_result["params"]
+        best_params["layer_thickness_um"] = 50 if best_params["layer_thickness_um"] < 0.5 else 100
         best_neg_ucb = best_result["target"]  # maximized value of (-UCB)
         best_ucb = (
             -best_neg_ucb
@@ -274,4 +277,12 @@ class ContextualBayesOpt:
             print("\nBest UCB score:")
             print(best_ucb)
 
-        return best_params, best_ucb, optimizer
+        # --- Decode categorical layer thickness ---
+        best_params["layer_thickness_um"] = 50 if int(best_params["layer_thickness_um"]) == 0 else 100
+
+        # --- Snap fit_adjustment to nearest allowed real printer option ---
+        allowed_fits = [-250, -150, -50, 0, 50, 150, 250]
+        best_params["fit_adjustment_pct"] = min(allowed_fits, key=lambda x: abs(x - best_params["fit_adjustment_pct"]))
+
+        return best_params, optimizer.max, optimizer.res
+

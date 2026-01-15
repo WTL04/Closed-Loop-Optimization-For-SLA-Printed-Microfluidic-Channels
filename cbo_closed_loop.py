@@ -27,19 +27,12 @@ from visualize import visualize_model_convergence
 #          Load & merge datasets
 # ==========================================================
 def load_dataset():
-    """Loads and merges both datasets into one clean DataFrame"""
-    df_multi = pd.read_csv("datasets/multi_batch_channels_dataset.csv")
-    df_context = pd.read_csv("datasets/sla_spc_flowrate_channels_13batches.csv")
+    """Loads the new dataset (already complete)"""
+    df = pd.read_csv("datasets/dataset.csv")
 
-    # Add contextual features
-    df_multi["resin_temp"] = df_context["resin_temp"]
-    df_multi["resin_age"] = df_context["resin_age"]
-    df_multi["ambient_temp"] = df_context["ambient_temp"]
+    # No support_mode column in new dataset
+    return df
 
-    # Drop columns that don't apply to rectangular channels
-    df_multi.drop(columns=["channel_diameter_mm"], inplace=True)
-
-    return df_multi
 
 
 # ==========================================================
@@ -47,20 +40,36 @@ def load_dataset():
 # ==========================================================
 def run_experiment(params, context, channels_per_batch=10, simulate=True):
     """Simulates a batch print for now; later replaced with real printer integration"""
-    base_radius = params.get("channel_width_mm", 2.0) / 2.0
-    resin_factor = 1.0 if params.get("resin_type", "Resin_A") == "Resin_A" else 0.92
-    mean_flow = (
-        resin_factor
-        * (base_radius**4)
-        / max(params.get("channel_length_mm", 30.0), 1.0)
-        * 400.0
-    )
+    # --- New realistic flow model using ONLY new dataset features ---
 
-    lt = params.get("layer_thickness_um", 50)
-    ori = params.get("orientation_deg", 45)
-    lt_effect = 1.05 if lt <= 20 else (0.95 if lt >= 100 else 1.0)
-    ori_factor = 1.05 if 30 < ori < 60 else 0.97
-    mean_flow *= lt_effect * ori_factor
+    mean_flow = 100.0  # baseline nominal flow rate
+
+    # layer thickness (0=50 um, 1=100 um)
+    lt_value = params["layer_thickness_um"]  # already decoded to 50 or 100
+    lt_factor = 1.10 if lt_value == 50 else 0.90
+    mean_flow *= lt_factor
+
+    # orientation / z rotation effect
+    ori = params["z_rotation_deg"]
+    ori_factor = 1 - abs(ori - 45) / 200
+    mean_flow *= ori_factor
+
+    # fit adjustment (tight fit → smaller flow)
+    fit = params["fit_adjustment_pct"]
+    fit_factor = 1 - abs(fit) / 3000
+    mean_flow *= fit_factor
+
+    # resin temperature
+    temp_factor = 1 + (context["resin_temp"] - 72) * 0.01
+    mean_flow *= temp_factor
+
+    # ambient temperature
+    ambient_factor = 1 + (context["ambient_temp"] - 72) * 0.005
+    mean_flow *= ambient_factor
+
+    # resin aging effect
+    age_factor = 1 - (context["resin_age"] * 0.002)
+    mean_flow *= age_factor
 
     rows = []
     batch_id = f"RUN_{int(time.time())}"
@@ -75,18 +84,14 @@ def run_experiment(params, context, channels_per_batch=10, simulate=True):
         rows.append(
             {
                 "batch_id": batch_id,
-                "resin_type": params.get("resin_type", "Resin_A"),
-                "layer_thickness_um": params.get("layer_thickness_um", 50),
-                "orientation_deg": params.get("orientation_deg", 45),
-                "support_mode": params.get("support_mode", "auto"),
+                "layer_thickness_um": lt_value,
+                "z_rotation_deg": params.get("z_rotation_deg", 45),
                 "fit_adjustment_pct": params.get("fit_adjustment_pct", 0.0),
-                "channel_length_mm": params.get("channel_length_mm", 40.0),
-                "channel_width_mm": params.get("channel_width_mm", 2.0),
                 "resin_temp": context["resin_temp"],
                 "ambient_temp": context["ambient_temp"],
                 "resin_age": context["resin_age"],
                 "channel_id": f"{batch_id}_CH{i + 1:02d}",
-                "measured_flow_mL_per_min": flow,
+                "flow_rate_per_min": flow,
             }
         )
     return pd.DataFrame(rows)
@@ -98,20 +103,16 @@ def run_experiment(params, context, channels_per_batch=10, simulate=True):
 def update_training_data(df_all):
     """Computes CV per batch, returns updated training data"""
     summary = (
-        df_all.groupby("batch_id")["measured_flow_mL_per_min"]
+        df_all.groupby("batch_id")["flow_rate_per_min"]
         .agg(["mean", "std"])
         .reset_index()
     )
     summary["cv"] = summary["std"] / summary["mean"]
 
     features = [
-        "resin_type",
         "layer_thickness_um",
-        "orientation_deg",
-        "support_mode",
+        "z_rotation_deg",
         "fit_adjustment_pct",
-        "channel_length_mm",
-        "channel_width_mm",
         "resin_temp",
         "ambient_temp",
         "resin_age",
@@ -123,6 +124,11 @@ def update_training_data(df_all):
         .reset_index()
         .merge(summary[["batch_id", "cv"]], on="batch_id")
     )
+    df_batches["layer_thickness_um"] = df_batches["layer_thickness_um"].replace({50: 0, 100: 1})
+
+    # Encode fit adjustment as categorical index
+    fit_map = {v: i for i, v in enumerate([-250, -150, -50, 0, 50, 150, 250])}
+    df_batches["fit_adjustment_pct"] = df_batches["fit_adjustment_pct"].map(fit_map)
 
     X, y = df_batches[features], df_batches["cv"]
     return X, y, df_batches
@@ -154,18 +160,15 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         df_hist = load_dataset()
 
         features = [
-            "resin_type",
             "layer_thickness_um",
-            "orientation_deg",
-            "support_mode",
+            "z_rotation_deg",
             "fit_adjustment_pct",
-            "channel_length_mm",
-            "channel_width_mm",
             "resin_temp",
             "ambient_temp",
             "resin_age",
         ]
-        categorical = ["resin_type", "support_mode"]
+        categorical = ["layer_thickness_um", "fit_adjustment_pct"]
+
         numerical = [f for f in features if f not in categorical]
 
         preprocess = ColumnTransformer(
@@ -185,17 +188,12 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
             ]
         )
 
-        # TODO: Encode layer_thickness_um and fit_adjustment_pct into discrete options
-        # discrete parameter values
-        LAYER_VALUES = [50, 100]
-        FIT_VALUES = [-250, -150, -50, 0, 50, 150, 250]
-
-        # available parameter search space
         pbounds = {
-            "layer_thickness_um": (0, len(LAYER_VALUES) - 1),
-            "fit_adjustment_pct": (0, len(FIT_VALUES) - 1),
-            "z_rotation": (0, 90),
-        }
+            "layer_thickness_um": (0, 1),    # categorical 0/1
+            "z_rotation_deg": (0, 90),
+            "fit_adjustment_pct": (0, 6),    # categorical index from 0–6
+            }
+
 
         cbo = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
 
@@ -208,12 +206,19 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         cv_history = [prev_cv]
         # stable_count = 0
 
-        # --- Optimization loop with early stopping, using Probability of Improvment metric---
+        # --- Optimization loop with early stopping---
         for i in range(1, max_iterations + 1):
             print(f"\n--- Iteration {i} ---")
             print(f"Context snapshot: {c_new}")
 
             best_params, _, _ = cbo.compute_bayes_opt(c_new, verbose=True)
+            # convert categorical layer thickness to real MoonRay values
+            best_params["layer_thickness_um"] = 50 if int(best_params["layer_thickness_um"]) == 0 else 100
+
+            # Decode categorical fit adjustment
+            fit_vals = [-250, -150, -50, 0, 50, 150, 250]
+            best_params["fit_adjustment_pct"] = fit_vals[int(best_params["fit_adjustment_pct"])]
+
             print("Suggested parameters:", best_params)
 
             df_batch = run_experiment(best_params, c_new, simulate=simulate)
