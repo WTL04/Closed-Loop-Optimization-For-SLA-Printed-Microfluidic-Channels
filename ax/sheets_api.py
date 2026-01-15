@@ -42,7 +42,7 @@ def pullData(verbose=True):
     return df
 
 
-def get_latest_cv(column_name: str):
+def get_latest_col_value(column_name: str):
     # authorize client with credentials
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID)
@@ -68,7 +68,14 @@ def get_latest_cv(column_name: str):
     return col_values[-1]
 
 
-def append_row(params: dict, c_new: dict):
+def append_row(batch_id: int, channel_id: int, params: dict, c_new: dict):
+    """
+    Append a single experiment record to Google Sheets.
+
+    - batch_id and channel_id are metadata (stored as strings)
+    - params and context are numeric features where possible
+    - Row is aligned strictly to existing sheet headers
+    """
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID)
     worksheet = sheet.worksheet("Sheet1")
@@ -77,17 +84,28 @@ def append_row(params: dict, c_new: dict):
     if not headers:
         raise ValueError("Header row is empty. Put column names in row 1 first.")
 
-    # join param and context into one row
-    params.update(c_new)
+    # metadata (identifiers)
+    metadata = {
+        "batch_id": str(batch_id),
+        "channel_id": str(channel_id),
+    }
 
-    # build row aligned to headers
+    # numeric features (params + context)
+    features = {}
+    for k, v in {**params, **c_new}.items():
+        try:
+            features[k] = float(v)
+        except (TypeError, ValueError):
+            features[k] = ""
+
+    # build row strictly following header order
     row = []
     for h in headers:
-        v = params.get(h, "")
-        # Sheets likes plain Python scalars/strings, thanks chat
-        if isinstance(v, (int, float, str)):
-            row.append(v)
+        if h in metadata:
+            row.append(metadata[h])
+        elif h in features:
+            row.append(features[h])
         else:
-            row.append(str(v))
+            row.append("")
 
     worksheet.append_row(row, value_input_option="USER_ENTERED")
