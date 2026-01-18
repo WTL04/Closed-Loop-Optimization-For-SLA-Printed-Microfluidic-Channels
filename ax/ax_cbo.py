@@ -23,7 +23,6 @@ from ax.service.utils.instantiation import FixedFeatures
 from ax.core.observation import ObservationFeatures
 
 
-# TODO: Implement CBO with AX platform
 class ContextualBayesOptAx:
     """
     Contextual Bayesian Optimization using Ax Dev (Github Version, most updated)
@@ -143,6 +142,8 @@ class ContextualBayesOptAx:
 
             # initilaize an trial and add metrics of trial into records
             trial = self.experiment.new_trial()
+            # explicitly attach context as fixed features for true CBO
+            trial._fixed_features = ObservationFeatures(parameters=params)
             trial.add_arm(arm)
             trial.mark_running(no_runner_required=True)  # mark trial as running
 
