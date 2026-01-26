@@ -144,10 +144,7 @@ def load_data_source():
 
 def run_fake_trial(cbo, trial, context):
     suggested_params = trial.arms[0].parameters
-    fake_objective(
-        suggested_params, context
-    )  # TODO: does fake trials need to be observed?
-    # cbo.observe(trial=trial, metric_value=cv)
+    fake_objective(suggested_params, context)
 
 
 def run_real_trial(trial, context):
@@ -186,6 +183,73 @@ def visualize_convergence(cbo):
     plt.xlabel("Trial")
     plt.ylabel("Best flow_rate_per_min so far")
     plt.show()
+
+
+# ------------------------ testing ----------------------------
+def run_single_experiment(dataset_path: str, context: dict, seed: int = 0):
+    """
+    Runs one experiment: load dataset, warm-start Ax with historical data,
+    run one online suggestion + observation, and return the optimization trace.
+    """
+    np.random.seed(seed)
+
+    df = pd.read_csv(dataset_path)
+
+    cbo = ContextualBayesOptAx(
+        search_space=build_search_space(),
+        metric_name="channel_flow_rate_ml_per_min",
+        minimize=True,
+    )
+
+    cbo.add_historical(df)
+
+    # One online BO step (so you see behavior beyond just historical warm start)
+    trial = cbo.suggest(isOnline=True, c_t=context)["trial"]
+    suggested_params = trial.arms[0].parameters
+
+    # Fake evaluation (testing): MUST observe or the trace won't include this trial
+    # y = fake_objective(suggested_params, context, noise_std=1e-6)
+    # cbo.observe(trial=trial, metric_value=y)
+
+    return cbo.optimization_trace()
+
+
+def run_all_4_experiments_and_plot(seed: int = 0, fixed_context: dict | None = None):
+    """
+    Runs 4 experiments (5, 10, 15, 30 batches) and plots them as 2x2 subplots.
+    Returns (fig, axes).
+    """
+    if fixed_context is None:
+        fixed_context = {"ambient_temp": 80.0, "resin_temp": 80.0, "resin_age": 15.0}
+
+    experiments = [
+        ("5 batches", "../datasets/dataset_5_batches.csv"),
+        ("10 batches", "../datasets/dataset_10_batches.csv"),
+        ("15 batches", "../datasets/dataset_15_batches.csv"),
+        ("30 batches", "../datasets/dataset.csv"),
+    ]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+    axes = axes.flatten()
+
+    for i, (title, path) in enumerate(experiments):
+        trace = run_single_experiment(path, fixed_context, seed=seed + i)
+
+        ax = axes[i]
+        ax.plot(trace["trial_index"], trace["best_so_far"])
+        ax.set_title(title)
+        ax.set_xlabel("Trial")
+        ax.set_ylabel("Best channel_flow_rate_ml_per_min so far")
+        ax.grid(True, alpha=0.3)
+
+    plt.suptitle("CBO trial convergence across batch sizes")
+    plt.tight_layout()
+    plt.show()
+
+    return fig, axes
+
+
+# ----------------------------------------------------------
 
 
 def main():
