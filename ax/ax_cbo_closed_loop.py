@@ -144,10 +144,7 @@ def load_data_source():
 
 def run_fake_trial(cbo, trial, context):
     suggested_params = trial.arms[0].parameters
-    fake_objective(
-        suggested_params, context
-    )  # TODO: does fake trials need to be observed?
-    # cbo.observe(trial=trial, metric_value=cv)
+    fake_objective(suggested_params, context)
 
 
 def run_real_trial(trial, context):
@@ -252,39 +249,37 @@ def run_all_4_experiments_and_plot(seed: int = 0, fixed_context: dict | None = N
     return fig, axes
 
 
-# -----------------------------0 ----------------------------
+# ----------------------------------------------------------
 
 
 def main():
-    # try:
-    #     context = get_context_snapshot()
-    #     cbo = ContextualBayesOptAx(
-    #         search_space=build_search_space(),
-    #         metric_name="channel_flow_rate_ml_per_min",
-    #         minimize=True,
-    #     )
-    #
-    #     use_real_data, df = load_data_source()
-    #     cbo.add_historical(df)
-    #     print("Loaded Dataset into CBO surrogate")
-    #
-    #     trial = cbo.suggest(isOnline=True, c_t=context)["trial"]
-    #
-    #     if use_real_data:
-    #         completed = run_real_trial(trial, context)
-    #         if not completed:
-    #             return
-    #         cv = float(get_latest_col_value("channel_flow_rate_ml_per_min"))
-    #         cbo.observe(trial=trial, metric_value=cv)
-    #     else:
-    #         run_fake_trial(cbo, trial, context)
-    #
-    #     visualize_convergence(cbo)
-    #
-    # except ValueError as e:
-    #     print(e)
+    try:
+        context = get_context_snapshot()
+        cbo = ContextualBayesOptAx(
+            search_space=build_search_space(),
+            metric_name="channel_flow_rate_ml_per_min",
+            minimize=True,
+        )
 
-    run_all_4_experiments_and_plot(seed=42)
+        use_real_data, df = load_data_source()
+        cbo.add_historical(df)
+        print("Loaded Dataset into CBO surrogate")
+
+        trial = cbo.suggest(isOnline=True, c_t=context)["trial"]
+
+        if use_real_data:
+            completed = run_real_trial(trial, context)
+            if not completed:
+                return
+            cv = float(get_latest_col_value("channel_flow_rate_ml_per_min"))
+            cbo.observe(trial=trial, metric_value=cv)
+        else:
+            run_fake_trial(cbo, trial, context)
+
+        visualize_convergence(cbo)
+
+    except ValueError as e:
+        print(e)
 
 
 main()
