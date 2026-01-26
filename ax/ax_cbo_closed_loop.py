@@ -18,7 +18,7 @@ from sheets_api import pullData, get_latest_col_value, append_row
 
 # set default values to global vars
 BATCH_ID = 1
-CHANNEL_ID = 1
+NUM_CHANNELS = 13
 
 
 def build_search_space():
@@ -152,18 +152,10 @@ def run_real_trial(trial, context):
 
     # get latest metadata and values from spreadsheet
     batch_raw = get_latest_col_value("batch_id")
-    channel_raw = get_latest_col_value("channel_id")
     batch_id = int(batch_raw) if batch_raw is not None else 1
-    channel_id = int(channel_raw) if channel_raw is not None else 1
+    batch_id += 1
 
-    if channel_id >= 13:
-        # record new batch
-        batch_id += 1
-        channel_id = 1
-    else:
-        channel_id += 1
-
-    append_row(batch_id, channel_id, suggested_params, context)
+    append_row(batch_id, NUM_CHANNELS, suggested_params, context)
 
     if input("Did the print finish? (y/n) ").lower() == "n":
         return False
