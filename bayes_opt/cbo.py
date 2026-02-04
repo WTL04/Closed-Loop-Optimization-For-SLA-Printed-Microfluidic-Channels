@@ -168,10 +168,10 @@ class ContextualBayesOpt:
             row["layer_thickness_um"] = int(round(float(row["layer_thickness_um"])))
             row["layer_thickness_um"] = 0 if row["layer_thickness_um"] <= 0 else 1
 
-        # fit_adjustment_pct must be integer {0..6}
-        if "fit_adjustment_pct" in row:
-            row["fit_adjustment_pct"] = int(round(float(row["fit_adjustment_pct"])))
-            row["fit_adjustment_pct"] = max(0, min(6, row["fit_adjustment_pct"]))
+        # fit_adjustment must be integer {0..6}
+        if "fit_adjustment" in row:
+            row["fit_adjustment"] = int(round(float(row["fit_adjustment"])))
+            row["fit_adjustment"] = max(0, min(6, row["fit_adjustment"]))
         """
         print("\n--- CANDIDATE ROW (before predict) ---")
         print("Row columns:", list(row.keys()))
