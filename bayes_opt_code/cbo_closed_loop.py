@@ -29,19 +29,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-channels_per_batch = 13
-debug = False
-
 # Load & merge datasets
-from pathlib import Path
-import pandas as pd
-
-# load environmental variables
-from dotenv import load_dotenv
-
-load_dotenv()
-
-
 def load_dataset():
     """Loads dataset.csv from ../datasets and normalizes key columns."""
     project_root = Path(__file__).resolve().parent.parent
@@ -280,16 +268,14 @@ def update_training_data(df_all):
         .reset_index()
         .merge(summary[["batch_id", "cv", "delta_cv"]], on="batch_id")
     )
-    df_batches["layer_thickness_um"] = df_batches["layer_thickness_um"].replace(
-        {50: 0, 100: 1}
-    )
+
+    df_batches["layer_thickness_um"] = df_batches["layer_thickness_um"].replace({50: 0, 100: 1})
 
     fit_map = {v: i for i, v in enumerate([-250, -150, -50, 0, 50, 150, 250])}
     df_batches["fit_adjustment"] = df_batches["fit_adjustment"].map(fit_map)
 
     X, y = df_batches[features], df_batches["cv"]
     return X, y, df_batches
-
 
 def get_number_of_runs(default=3):
     val = input(f"Enter number of independent runs [default={default}]: ").strip()
@@ -592,6 +578,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         # store one history per run
         all_histories.append(cv_history)
 
+    # Visualization
     visualize_model_convergence(all_histories)
     # optional control chart
     try:
