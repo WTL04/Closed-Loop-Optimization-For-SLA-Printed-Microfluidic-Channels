@@ -27,9 +27,8 @@ from sklearn.metrics import r2_score
 from visualize import visualize_control_chart
 from pathlib import Path
 
-# ==========================================================
-#          Load & merge datasets
-# ==========================================================
+
+# Load & merge datasets
 from pathlib import Path
 import pandas as pd
 
@@ -40,28 +39,17 @@ def load_dataset():
 
     df = pd.read_csv(csv_path)
 
-    # --- Normalize column names if you ever changed them ---
-    # (only needed if your CSV sometimes uses different names)
-    rename_map = {
-        "channel_flow_rate_ml_per_min": "channel_flow_rate_ml_per_min",
-        "channel_flow_rate_per_min": "channel_flow_rate_ml_per_min",  # old name fallback
-    }
-    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
-
-    # --- Force batch_id numeric if possible ---
+    # Force batch_id numeric if possible
     if "batch_id" in df.columns:
         df["batch_id"] = pd.to_numeric(df["batch_id"], errors="coerce")
 
-    # Optional: drop rows that don’t have a usable batch_id
+    # drop rows that don’t have a usable batch_id
     df = df.dropna(subset=["batch_id"]).copy()
     df["batch_id"] = df["batch_id"].astype(int)
 
     return df
 
-
-# ==========================================================
-#          Simulate (or run) a new print batch
-# ==========================================================
+# Simulate (or run) a new print batch
 def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=True):
     """
     Simulates one batch print (channels_per_batch channels).
@@ -81,7 +69,7 @@ def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=Tr
     # ----------------------------
     mean_flow = 100.0  # baseline nominal flow rate (mL/min, arbitrary)
 
-    # layer thickness decoded to 50 or 100 (as you do in main)
+    # layer thickness decoded to 50 or 100 
     lt_value = params["layer_thickness_um"]  # 50 or 100
     lt_factor = 1.10 if lt_value == 50 else 0.90
     mean_flow *= lt_factor
@@ -91,20 +79,20 @@ def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=Tr
     ori_factor = 1.0 - abs(ori - 45.0) / 200.0
     mean_flow *= max(0.10, ori_factor)  # keep positive
 
-    # fit adjustment (tight fit -> smaller flow); your fit is decoded to [-250..250]
+    # fit adjustment 
     fit = float(params.get("fit_adjustment", 0.0))
     fit_factor = 1.0 - abs(fit) / 3000.0
     mean_flow *= max(0.10, fit_factor)
 
-    # resin temperature effect (nominal 72F)
+    # resin temperature effect 
     temp_factor = 1.0 + (float(context["resin_temp"]) - 72.0) * 0.01
     mean_flow *= max(0.10, temp_factor)
 
-    # ambient temperature effect (nominal 72F)
+    # ambient temperature effect 
     ambient_factor = 1.0 + (float(context["ambient_temp"]) - 72.0) * 0.005
     mean_flow *= max(0.10, ambient_factor)
 
-    # resin aging effect (older resin -> lower mean flow)
+    # resin aging effect 
     age_factor = 1.0 - float(context["resin_age"]) * 0.002
     mean_flow *= max(0.10, age_factor)
 
@@ -179,10 +167,7 @@ def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=Tr
 
     return pd.DataFrame(rows)
 
-
-# ==========================================================
-#             Compute CV & prep training data
-# ==========================================================
+# Compute CV & prep training data
 def update_training_data(df_all):
     """Computes CV per batch, returns updated training data"""
     summary = (
@@ -242,9 +227,7 @@ def get_initial_context_snapshot():
         "resin_age": resin_age,
     }
 
-# ==========================================================
-#                Main Closed-Loop Function (3 runs overlay)
-# ==========================================================
+# Main Closed-Loop Function 
 def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
     num_runs = get_number_of_runs(default=3)
     print(f"Running {num_runs} independent runs")
@@ -267,7 +250,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
     all_histories = []  # list of CV lists, one per run
 
     for run in range(num_runs):
-        # --- Reset environmental context ONCE per run ---
+        # Reset environmental context once per run
         base_context = get_initial_context_snapshot()
         print("Initial context snapshot:", base_context)
 
@@ -315,7 +298,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
 
         cbo = ContextualBayesOpt(pipeline=pipeline, pbounds=pbounds)
 
-        # --- Train on historical dataset ---
+        # Train on historical dataset
         X, y, df_batches = update_training_data(df_hist)
         cbo.train_surrogate(X, y, verbose=True)
         print(f"Loaded dataset with {len(df_batches)} batches.")
@@ -323,15 +306,14 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         r2 = r2_score(y, cbo.model.predict(X))
         print(f"Initial R2_train = {r2:.3f}")
 
-        # --- Initialize CV history ---
+        # Initialize CV history
         prev_cv = float(df_batches["cv"].iloc[-1])
         cv_history = [prev_cv]
 
         # Track decoded settings we've already tested in THIS RUN
         seen = set()
 
-
-        # --- Optimization loop ---
+        # Optimization loop
         for i in range(1, max_iterations + 1):
             print(f"\n--- Iteration {i} ---")
 
@@ -349,7 +331,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
             fit_vals = [-250, -150, -50, 0, 50, 150, 250]
             best_params["fit_adjustment"] = fit_vals[int(best_params["fit_adjustment"])]
 
-            # ---------- NO-REPEAT (decoded) SETTINGS PATCH ----------
+            # NO-REPEAT (decoded) SETTINGS PATCH
             # Key uses decoded discrete knobs + a binned orientation so near-duplicates count as repeats
             key = (
                 int(best_params["layer_thickness_um"]),
@@ -382,7 +364,6 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
                 )
 
             seen.add(key)
-            # ---------- END NO-REPEAT PATCH ----------
 
             print("Suggested parameters:", best_params)
             print(f"Best LCB (surrogate score): {best_lcb:.6f}")
@@ -411,12 +392,11 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
             delta_cv = new_cv - prev_cv
             cv_history.append(new_cv)
 
-
             print(
                 f"Previous CV: {prev_cv:.4f}, "
                 f"New CV: {new_cv:.4f}, "
                 f"delta_cv: {delta_cv:.4f}"
-            )
+                )
 
             prev_cv = new_cv
 
@@ -428,7 +408,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
             except Exception as e:
                 print("[Sheets] Append failed:", e)
 
-        # store ONE history per run
+        # store one history per run
         all_histories.append(cv_history)
 
     # --- Visualization ---
