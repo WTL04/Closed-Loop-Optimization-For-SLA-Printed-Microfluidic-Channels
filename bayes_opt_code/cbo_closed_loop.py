@@ -26,12 +26,10 @@ from visualize import visualize_model_convergence
 from sklearn.metrics import r2_score
 from visualize import visualize_control_chart
 from pathlib import Path
-
+from dotenv import load_dotenv
+load_dotenv()
 
 # Load & merge datasets
-from pathlib import Path
-import pandas as pd
-
 def load_dataset():
     """Loads dataset.csv from ../datasets and normalizes key columns."""
     project_root = Path(__file__).resolve().parent.parent
@@ -184,6 +182,7 @@ def update_training_data(df_all):
         .reset_index()
         .merge(summary[["batch_id", "cv", "delta_cv"]], on="batch_id")
     )
+
     df_batches["layer_thickness_um"] = df_batches["layer_thickness_um"].replace({50: 0, 100: 1})
 
     # Encode fit adjustment as categorical index
@@ -192,6 +191,7 @@ def update_training_data(df_all):
 
     X, y = df_batches[features], df_batches["cv"]
     return X, y, df_batches
+
 def get_number_of_runs(default=3):
     val = input(f"Enter number of independent runs [default={default}]: ").strip()
     if val == "":
@@ -403,7 +403,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         # store one history per run
         all_histories.append(cv_history)
 
-    # --- Visualization ---
+    # Visualization
     visualize_model_convergence(all_histories)
 
     visualize_control_chart(df_batches)
