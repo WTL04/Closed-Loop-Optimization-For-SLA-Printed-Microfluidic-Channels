@@ -420,28 +420,11 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
 
             prev_cv = new_cv
 
-        # Append ONE ROW per run: best parameters + mean flow
+        # append one best batch to Sheets
         if gs_logger is not None and best_df_batch is not None:
             try:
-                r0 = best_df_batch.iloc[0]
-
-                mean_flow = float(best_df_batch["channel_flow_rate_ml_per_min"].mean())
-
-                one_row = {
-                    "batch_id": int(r0["batch_id"]),
-                    "channel_id": 0,  # 0 means "summary row"
-                    "layer_thickness_um": int(r0["layer_thickness_um"]),
-                    "z_rotation_deg": float(r0["z_rotation_deg"]),
-                    "fit_adjustment": float(r0["fit_adjustment"]),
-                    "resin_age": float(r0["resin_age"]),
-                    "resin_temp": float(r0["resin_temp"]),
-                    "ambient_temp": float(r0["ambient_temp"]),
-                    # store mean as the single representative flow value
-                    "channel_flow_rate_ml_per_min": mean_flow,
-                }
-
-                gs_logger.append_dataframe(pd.DataFrame([one_row]))
-                print(f"[Sheets] Appended 1 BEST row for run {run + 1} (best CV = {best_cv:.4f})")
+                gs_logger.append_dataframe(best_df_batch)
+                print(f"[Sheets] Appended BEST batch for run {run + 1} (CV = {best_cv:.4f})")
             except Exception as e:
                 print("[Sheets] Append failed:", e)
 
