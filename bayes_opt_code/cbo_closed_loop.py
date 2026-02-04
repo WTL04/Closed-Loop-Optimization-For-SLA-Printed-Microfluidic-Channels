@@ -64,17 +64,15 @@ def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=Tr
     import numpy as np
     import pandas as pd
 
-    # ----------------------------
-    # 1) Mean flow model (systematic effects)
-    # ----------------------------
-    mean_flow = 100.0  # baseline nominal flow rate (mL/min, arbitrary)
+    # 1) Mean flow model 
+    mean_flow = 100.0  # baseline nominal flow rate (mL/min)
 
     # layer thickness decoded to 50 or 100 
     lt_value = params["layer_thickness_um"]  # 50 or 100
     lt_factor = 1.10 if lt_value == 50 else 0.90
     mean_flow *= lt_factor
 
-    # orientation / z rotation effect (best near 45 deg)
+    # orientation / z rotation effect 
     ori = float(params.get("z_rotation_deg", 45.0))
     ori_factor = 1.0 - abs(ori - 45.0) / 200.0
     mean_flow *= max(0.10, ori_factor)  # keep positive
@@ -96,21 +94,17 @@ def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=Tr
     age_factor = 1.0 - float(context["resin_age"]) * 0.002
     mean_flow *= max(0.10, age_factor)
 
-    # ----------------------------
-    # 2) Variability model (what drives CV)
-    # ----------------------------
-    # Penalties: farther from sweet spot => higher variance
-    # Note: fit here is already decoded (-250..250), so normalize by 250
+    # 2) Variability model 
+    # fit here is already decoded (-250..250), so normalize by 250
     p_ori = abs(ori - 45.0) / 45.0            # 0 at 45deg, ~1 at 0/90
     p_fit = min(abs(fit) / 250.0, 1.0)        # 0 at 0, 1 at +/-250
-    p_lt = 0.15 if lt_value == 100 else 0.0   # assume 100um slightly less stable
+    p_lt = 0.15 if lt_value == 100 else 0.0   
 
     # Context penalties (drift increases variability)
     p_age = min(float(context["resin_age"]) / 30.0, 1.0)
     p_temp = min(abs(float(context["resin_temp"]) - 72.0) / 10.0, 1.0)
 
-    # Channel-level noise fraction (dominant term for within-batch CV)
-    # Lower is better. Tuned so CV is realistically in a small range.
+    # Channel-level noise fraction 
     channel_noise_frac = (
         0.006
         + 0.010 * p_ori
@@ -121,8 +115,7 @@ def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=Tr
     )
     channel_noise_frac = float(np.clip(channel_noise_frac, 0.002, 0.06))
 
-    # Batch-level drift fraction (common-mode bias across channels in the batch)
-    # This captures "printer state" and environmental drift: you want BO to reduce sensitivity to it.
+    # Batch-level drift fraction
     batch_drift_frac = (
         0.002
         + 0.003 * p_age
@@ -133,9 +126,7 @@ def run_experiment(params, context, batch_id, channels_per_batch=10, simulate=Tr
     )
     batch_drift_frac = float(np.clip(batch_drift_frac, 0.001, 0.02))
 
-    # ----------------------------
     # 3) Generate batch data
-    # ----------------------------
     rows = []
 
     if simulate:
@@ -216,7 +207,7 @@ def get_initial_context_snapshot():
         resin_temp = float(input("resin_temp (°F): ").strip())
         resin_age = float(input("resin_age (estimated hours since opened): ").strip())
     else:
-        # Fixed testing snapshot (edit these defaults if you want)
+        # Fixed testing snapshot (edit these defaults if needed)
         ambient_temp = 75.0
         resin_temp = 73.0
         resin_age = 5.0
@@ -229,12 +220,14 @@ def get_initial_context_snapshot():
 
 # Main Closed-Loop Function 
 def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
+    
     num_runs = get_number_of_runs(default=3)
     print(f"Running {num_runs} independent runs")
+    
     gs_logger = None
     creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     sheet_id = os.environ.get("SHEET_ID")
-    worksheet = os.environ.get("WORKSHEET_NAME", "Dataset")
+    worksheet = os.environ.get("WORKSHEET_NAME", "Sheet2")
 
     if creds_path and sheet_id:
         try:
@@ -331,7 +324,6 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
             fit_vals = [-250, -150, -50, 0, 50, 150, 250]
             best_params["fit_adjustment"] = fit_vals[int(best_params["fit_adjustment"])]
 
-            # NO-REPEAT (decoded) SETTINGS PATCH
             # Key uses decoded discrete knobs + a binned orientation so near-duplicates count as repeats
             key = (
                 int(best_params["layer_thickness_um"]),
@@ -384,7 +376,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
 
             new_cv = float(df_batches["cv"].iloc[-1])
 
-            # track best batch (so we can log ONLY the best one at the end of the run)
+            # track best batch 
             if new_cv < best_cv:
                 best_cv = new_cv
                 best_df_batch = df_batch.copy()
