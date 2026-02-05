@@ -88,7 +88,7 @@ class ContextualBayesOpt:
             cv=5,
             scoring="neg_mean_squared_error",
             n_jobs=-1,
-            verbose=1,
+            verbose=0,
         )
 
         grid_search.fit(X, y)
@@ -131,17 +131,9 @@ class ContextualBayesOpt:
         self.EXPECTED = list(self.pre.feature_names_in_)
 
         # make sure EXPECTED schema is captured
-        if self.EXPECTED is None:
-            self._build_schema()   # ensure it's populated
-        """
-        print("\n--- PIPELINE SCHEMA ---")
-        try:
-            print("preprocessor feature names (if available):", getattr(self.pre, "feature_names_in_", None))
-        except Exception:
-            pass
-        print("EXPECTED columns:", self.EXPECTED)
-        print("--- END PIPELINE SCHEMA ---\n")
-        """
+        self.EXPECTED = list(self.pre.feature_names_in_)
+        if not self.EXPECTED:
+            raise RuntimeError("Pipeline schema could not be built (feature_names_in_ missing).")
 
     def _make_row(self, c_t, x):
         """
@@ -172,13 +164,7 @@ class ContextualBayesOpt:
         if "fit_adjustment" in row:
             row["fit_adjustment"] = int(round(float(row["fit_adjustment"])))
             row["fit_adjustment"] = max(0, min(6, row["fit_adjustment"]))
-        """
-        print("\n--- CANDIDATE ROW (before predict) ---")
-        print("Row columns:", list(row.keys()))
-        print("Row sample:", row)
-        print("DataFrame columns to pipeline:", self.EXPECTED)
-        print("--- END CANDIDATE ROW ---\n")
-        """
+        
         return pd.DataFrame([row], columns=self.EXPECTED)
 
     def _mu_sigma(self, df):
