@@ -19,8 +19,6 @@ def load_dataset():
 
     return pd.read_csv(csv_path)
 
-
-
 def load_features():
     """
     Returns a list of knobs + context pertaining to the dataset
@@ -34,7 +32,6 @@ def load_features():
 
     features = knobs + context
     return features
-
 
 def main():
     current_ambient_temp = float(input(

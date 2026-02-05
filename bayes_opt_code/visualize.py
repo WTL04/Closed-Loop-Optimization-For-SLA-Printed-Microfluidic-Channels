@@ -99,7 +99,7 @@ def visualize_model_convergence(all_histories, save_path=None):
         # small annotation slightly above the star
         plt.annotate(f"{best_val:.4f}", (best_i, best_val), xytext=(6, 6), textcoords="offset points", fontsize=9)
 
-    plt.title("Flow Rate CV Improvement Across Iterations (Fixed Context: Warm Room Temp, 5-Day Resin)")
+    plt.title("Flow Rate CV Across Iterations (Lowest Point Marked)")
     plt.xlabel("Iteration")
     plt.ylabel("Coefficient of Variation (CV)")
     plt.grid(True)
@@ -108,28 +108,4 @@ def visualize_model_convergence(all_histories, save_path=None):
 
     if save_path:
         plt.savefig(save_path, dpi=200)
-    plt.show()
-
-
-def visualize_model_convergence(all_histories):
-    """Raw CV only (clean)."""
-    plt.figure(figsize=(9, 5))
-
-    for run_idx, raw_list in enumerate(all_histories, start=1):
-        raw = np.array(raw_list, dtype=float)
-        iters = np.arange(len(raw))
-
-        plt.plot(iters, raw, marker="o", label=f"Run {run_idx}")
-
-        min_idx = int(np.argmin(raw))
-        min_val = float(raw[min_idx])
-        plt.scatter(min_idx, min_val, marker="*", s=240, edgecolor="black", zorder=6)
-        plt.text(min_idx, min_val, f"  {min_val:.4f}", va="bottom")
-
-    plt.xlabel("Iteration")
-    plt.ylabel("CV")
-    plt.title("CV per Iteration (Lowest Point Marked)")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
     plt.show()
