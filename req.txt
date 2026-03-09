@@ -35,3 +35,7 @@ requests
 gspread
 gspread-dataframe
 google-auth
+
+# CAD development 
+cadquery
+cadquery[ipython]

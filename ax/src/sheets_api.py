@@ -19,7 +19,7 @@ creds = Credentials.from_service_account_file(
 )
 
 
-def pullData(verbose=True):
+def pullData(sheet_name: str = "Sheet1", verbose: bool = True):
     """
     Pulls data from google sheets from the cloud
 
@@ -32,7 +32,7 @@ def pullData(verbose=True):
     # authorize client with credentials
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID)
-    worksheet = sheet.worksheet("Sheet1")
+    worksheet = sheet.worksheet(sheet_name)
 
     data = worksheet.get_all_records()  # list of dicts
     df = pd.DataFrame(data)
@@ -42,11 +42,14 @@ def pullData(verbose=True):
     return df
 
 
-def get_latest_col_value(column_name: str):
+def get_latest_col_value(
+    column_name: str,
+    sheet_name: str = "Sheet1",
+):
     # authorize client with credentials
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID)
-    worksheet = sheet.worksheet("Sheet1")
+    worksheet = sheet.worksheet(sheet_name)
 
     # fetch header row
     headers = worksheet.row_values(1)
@@ -68,7 +71,13 @@ def get_latest_col_value(column_name: str):
     return col_values[-1]
 
 
-def append_row(batch_id: int, num_channels: int, params: dict, c_new: dict):
+def append_row(
+    batch_id: int,
+    num_channels: int,
+    params: dict,
+    c_new: dict,
+    sheet_name: str = "Sheet1",
+):
     """
     Append a single experiment record to Google Sheets.
 
@@ -78,7 +87,7 @@ def append_row(batch_id: int, num_channels: int, params: dict, c_new: dict):
     """
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SHEET_ID)
-    worksheet = sheet.worksheet("Sheet1")
+    worksheet = sheet.worksheet(sheet_name)
 
     headers = worksheet.row_values(1)
     if not headers:
