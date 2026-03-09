@@ -33,7 +33,17 @@ channels_per_batch = 13
 debug = False
 
 # Load & merge datasets
-def load_dataset_csv():
+from pathlib import Path
+import pandas as pd
+
+# load environmental variables
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def load_dataset():
+    """Loads dataset.csv from ../datasets and normalizes key columns."""
     project_root = Path(__file__).resolve().parent.parent
     csv_path = project_root / "datasets" / "dataset.csv"
     return pd.read_csv(csv_path)
@@ -96,6 +106,7 @@ def get_initial_context_snapshot():
         "resin_age": resin_age,
     }
 
+
 # Simulate (or run) a new print batch
 def run_experiment(params, context, batch_id, channels_per_batch, sheet_manual_entry=False, simulate=True):
     """
@@ -108,47 +119,47 @@ def run_experiment(params, context, batch_id, channels_per_batch, sheet_manual_e
     Later, set simulate=False to replace with real measured flows.
     """
 
-    # 1) Mean flow model 
+    # 1) Mean flow model
     mean_flow = 100.0  # baseline nominal flow rate (mL/min)
 
-    # layer thickness decoded to 50 or 100 
+    # layer thickness decoded to 50 or 100
     lt_value = params["layer_thickness_um"]  # 50 or 100
     lt_factor = 1.10 if lt_value == 50 else 0.90
     mean_flow *= lt_factor
 
-    # orientation / z rotation effect 
+    # orientation / z rotation effect
     ori = float(params.get("z_rotation_deg", 45.0))
     ori_factor = 1.0 - abs(ori - 45.0) / 200.0
     mean_flow *= max(0.10, ori_factor)  # keep positive
 
-    # fit adjustment 
+    # fit adjustment
     fit = float(params.get("fit_adjustment", 0.0))
     fit_factor = 1.0 - abs(fit) / 3000.0
     mean_flow *= max(0.10, fit_factor)
 
-    # resin temperature effect 
+    # resin temperature effect
     temp_factor = 1.0 + (float(context["resin_temp"]) - 72.0) * 0.01
     mean_flow *= max(0.10, temp_factor)
 
-    # ambient temperature effect 
+    # ambient temperature effect
     ambient_factor = 1.0 + (float(context["ambient_temp"]) - 72.0) * 0.005
     mean_flow *= max(0.10, ambient_factor)
 
-    # resin aging effect 
+    # resin aging effect
     age_factor = 1.0 - float(context["resin_age"]) * 0.002
     mean_flow *= max(0.10, age_factor)
 
-    # 2) Variability model 
+    # 2) Variability model
     # fit here is already decoded (-250..250), so normalize by 250
-    p_ori = abs(ori - 45.0) / 45.0            # 0 at 45deg, ~1 at 0/90
-    p_fit = min(abs(fit) / 250.0, 1.0)        # 0 at 0, 1 at +/-250
-    p_lt = 0.15 if lt_value == 100 else 0.0   
+    p_ori = abs(ori - 45.0) / 45.0  # 0 at 45deg, ~1 at 0/90
+    p_fit = min(abs(fit) / 250.0, 1.0)  # 0 at 0, 1 at +/-250
+    p_lt = 0.15 if lt_value == 100 else 0.0
 
     # Context penalties (drift increases variability)
     p_age = min(float(context["resin_age"]) / 30.0, 1.0)
     p_temp = min(abs(float(context["resin_temp"]) - 72.0) / 10.0, 1.0)
 
-    # Channel-level noise fraction 
+    # Channel-level noise fraction
     channel_noise_frac = (
         0.006
         + 0.010 * p_ori
@@ -219,10 +230,12 @@ def run_experiment(params, context, batch_id, channels_per_batch, sheet_manual_e
                 "resin_age": float(context["resin_age"]),
                 "resin_temp": float(context["resin_temp"]),
                 "ambient_temp": float(context["ambient_temp"]),
-                "channel_flow_rate_ml_per_min": flow,
+                "channel_flow_rate_ml_per_min": float(flow),
             }
-    )
+        )
+
     return pd.DataFrame(rows)
+
 
 # Compute CV & prep training data
 def update_training_data(df_all):
@@ -266,9 +279,9 @@ def update_training_data(df_all):
         .reset_index()
         .merge(summary[["batch_id", "cv", "delta_cv"]], on="batch_id")
     )
-
-    # encode thickness to 0/1
-    df_batches["layer_thickness_um"] = df_batches["layer_thickness_um"].replace({50: 0, 100: 1})
+    df_batches["layer_thickness_um"] = df_batches["layer_thickness_um"].replace(
+        {50: 0, 100: 1}
+    )
 
     fit_map = {v: i for i, v in enumerate([-250, -150, -50, 0, 50, 150, 250])}
     df_batches["fit_adjustment"] = df_batches["fit_adjustment"].map(fit_map)
@@ -276,13 +289,43 @@ def update_training_data(df_all):
     X, y = df_batches[features], df_batches["cv"]
     return X, y, df_batches
 
-# Main Closed-Loop Function 
-def main(num_runs=1, max_iterations=10, tolerance=0.005):
-    # Prompts the user for the number of independent runs
-    num_runs = get_number_of_runs(default=num_runs)
+
+def get_number_of_runs(default=3):
+    val = input(f"Enter number of independent runs [default={default}]: ").strip()
+    if val == "":
+        return default
+    return int(val)
+
+
+def get_initial_context_snapshot():
+    print(
+        "1) Manually input context snapshot  2) Use fixed testing context snapshot: ",
+        end="",
+    )
+    choice = input().strip()
+
+    if choice == "1":
+        ambient_temp = float(input("ambient_temp (°F): ").strip())
+        resin_temp = float(input("resin_temp (°F): ").strip())
+        resin_age = float(input("resin_age (estimated hours since opened): ").strip())
+    else:
+        # Fixed testing snapshot (edit these defaults if needed)
+        ambient_temp = 75.0
+        resin_temp = 73.0
+        resin_age = 5.0
+
+    return {
+        "ambient_temp": ambient_temp,
+        "resin_temp": resin_temp,
+        "resin_age": resin_age,
+    }
+
+
+# Main Closed-Loop Function
+def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
+    num_runs = get_number_of_runs(default=3)
     print(f"Running {num_runs} independent runs")
 
-    # Initializes Google Sheets logging if credentials are available
     gs_logger = None
     creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     sheet_id = os.environ.get("SHEET_ID")
@@ -316,6 +359,17 @@ def main(num_runs=1, max_iterations=10, tolerance=0.005):
         print("Initial context snapshot:", base_context)
         c_new = dict(base_context)
 
+        print(f"\n========== RUN {run + 1}/{num_runs} ==========")
+        best_cv = float("inf")
+        best_df_batch = None
+
+        # Load and retrain surrogate fresh each run
+        df_hist = load_dataset()
+
+        start_batch_id = (
+            int(pd.to_numeric(df_hist["batch_id"], errors="coerce").max()) + 1
+        )
+
         features = [
             "layer_thickness_um",
             "z_rotation_deg",
@@ -329,7 +383,11 @@ def main(num_runs=1, max_iterations=10, tolerance=0.005):
 
         preprocess = ColumnTransformer(
             [
-                ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical),
+                (
+                    "cat",
+                    OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                    categorical,
+                ),
                 ("num", StandardScaler(), numerical),
             ]
         )
@@ -387,15 +445,64 @@ def main(num_runs=1, max_iterations=10, tolerance=0.005):
             # get suggestion from BO
             best_params, best_lcb, _ = cbo.compute_bayes_opt(c_new, verbose=True)
 
-            # Decodes discrete variables from optimizer encoding into physical print settings
-            best_params["layer_thickness_um"] = 50 if int(round(best_params["layer_thickness_um"])) == 0 else 100
+            # Decode to physical values for experiment
+            best_params["layer_thickness_um"] = (
+                50 if int(round(best_params["layer_thickness_um"])) == 0 else 100
+            )
             fit_vals = [-250, -150, -50, 0, 50, 150, 250]
             best_params["fit_adjustment"] = fit_vals[int(best_params["fit_adjustment"])]
+
+            # Key uses decoded discrete knobs + a binned orientation so near-duplicates count as repeats
+            key = (
+                int(best_params["layer_thickness_um"]),
+                int(best_params["fit_adjustment"]),
+                int(
+                    round(best_params["z_rotation_deg"] / 10.0) * 10
+                ),  # bin angle to nearest 10 degrees
+            )
+
+            if key in seen:
+                print("Repeated decoded setting detected -> forcing exploration")
+
+                # 1) Jitter orientation to escape repeats
+                best_params["z_rotation_deg"] = float(
+                    np.clip(
+                        best_params["z_rotation_deg"] + np.random.uniform(-15, 15),
+                        0,
+                        90,
+                    )
+                )
+
+                # 2) Sometimes flip layer thickness
+                if np.random.rand() < 0.50:
+                    best_params["layer_thickness_um"] = (
+                        50 if best_params["layer_thickness_um"] == 100 else 100
+                    )
+
+                # 3) Sometimes jump to a different fit setting
+                if np.random.rand() < 0.50:
+                    best_params["fit_adjustment"] = int(
+                        np.random.choice([-250, -150, -50, 0, 50, 150, 250])
+                    )
+
+                # recompute key after forcing exploration
+                key = (
+                    int(best_params["layer_thickness_um"]),
+                    int(best_params["fit_adjustment"]),
+                    int(round(best_params["z_rotation_deg"] / 10.0) * 10),
+                )
+
+            seen.add(key)
 
             print("Suggested parameters:", best_params)
             print(f"Best LCB (surrogate score): {best_lcb:.6f}")
 
             clean_batch_id = start_batch_id + (i - 1)
+            df_batch = run_experiment(
+                best_params, c_new, batch_id=clean_batch_id, simulate=simulate
+            )
+
+            df_hist = pd.concat([df_hist, df_batch], ignore_index=True)
 
             # create template rows (13 rows with blank flow) and append to sheet
             df_template = run_experiment(
@@ -454,11 +561,34 @@ def main(num_runs=1, max_iterations=10, tolerance=0.005):
                 print(f"[DEBUG] Iter {i}: R2_train = {r2:.3f}")
 
             new_cv = float(df_batches["cv"].iloc[-1])
+
+            # track best batch
+            if new_cv < best_cv:
+                best_cv = new_cv
+                best_df_batch = df_batch.copy()
+
             delta_cv = new_cv - prev_cv
             cv_history.append(new_cv)
-            print(f"Prev CV: {prev_cv:.4f}, New CV: {new_cv:.4f}, delta: {delta_cv:.4f}")
+
+            print(
+                f"Previous CV: {prev_cv:.4f}, "
+                f"New CV: {new_cv:.4f}, "
+                f"delta_cv: {delta_cv:.4f}"
+            )
+
             prev_cv = new_cv
 
+        # append one best batch to Sheets
+        if gs_logger is not None and best_df_batch is not None:
+            try:
+                gs_logger.append_dataframe(best_df_batch)
+                print(
+                    f"[Sheets] Appended BEST batch for run {run + 1} (CV = {best_cv:.4f})"
+                )
+            except Exception as e:
+                print("[Sheets] Append failed:", e)
+
+        # store one history per run
         all_histories.append(cv_history)
 
     visualize_model_convergence(all_histories)
@@ -467,6 +597,7 @@ def main(num_runs=1, max_iterations=10, tolerance=0.005):
         visualize_control_chart(df_batches)
     except Exception:
         pass
+
 
 if __name__ == "__main__":
     main()
