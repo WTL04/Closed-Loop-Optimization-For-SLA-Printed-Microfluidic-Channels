@@ -107,6 +107,7 @@ def get_initial_context_snapshot():
     }
 
 
+
 # Simulate (or run) a new print batch
 def run_experiment(params, context, batch_id, channels_per_batch, sheet_manual_entry=False, simulate=True):
     """
@@ -597,6 +598,7 @@ def main(num_runs=3, max_iterations=15, tolerance=0.005, simulate=True):
         visualize_control_chart(df_batches)
     except Exception:
         pass
+
 
 
 if __name__ == "__main__":
