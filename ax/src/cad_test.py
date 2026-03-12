@@ -87,7 +87,6 @@ def build_cad_model(params: dict):
     channel_length = params["channel_length"]
     channel_width = params["channel_width"]
     channel_height = params["channel_height"]
-    layer_thickness = params["layer_thickness_um"]
 
     base = cq.Workplane("XY").box(100, 100, 2)
 
@@ -104,12 +103,10 @@ def build_cad_model(params: dict):
 
 if __name__ == "__main__":
     params = run_cbo_for_cad()
-    print(f"\nCAD Parameters: {params}")
-
     model = build_cad_model(params)
 
     print("\nExporting to STL...")
-    cq.exporters.export(model, "/tmp/channel_test.stl")
+    cq.exporters.export(model, "../cad_models/channel_test.stl")
     print("Exported to /tmp/channel_test.stl")
     print()
     print("Parameters for CAD modeling:")
