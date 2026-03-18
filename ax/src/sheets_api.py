@@ -73,7 +73,6 @@ def get_latest_col_value(
 
 def append_row(
     batch_id: int,
-    num_channels: int,
     params: dict,
     c_new: dict,
     sheet_name: str = "Sheet1",
@@ -81,7 +80,7 @@ def append_row(
     """
     Append a single experiment record to Google Sheets.
 
-    - batch_id and channel_id are metadata (stored as strings)
+    - batch_id is metadata (stored as string)
     - params and context are numeric features where possible
     - Row is aligned strictly to existing sheet headers
     """
@@ -93,29 +92,27 @@ def append_row(
     if not headers:
         raise ValueError("Header row is empty. Put column names in row 1 first.")
 
-    for channel_id in range(num_channels - 1):
-        # metadata (identifiers)
-        metadata = {
-            "batch_id": str(batch_id),
-            "channel_id": channel_id + 1,
-        }
+    # metadata (identifiers)
+    metadata = {
+        "batch_id": str(batch_id),
+    }
 
-        # numeric features (params + context)
-        features = {}
-        for k, v in {**params, **c_new}.items():
-            try:
-                features[k] = float(v)
-            except (TypeError, ValueError):
-                features[k] = ""
+    # numeric features (params + context)
+    features = {}
+    for k, v in {**params, **c_new}.items():
+        try:
+            features[k] = float(v)
+        except (TypeError, ValueError):
+            features[k] = ""
 
-        # build row strictly following header order
-        row = []
-        for h in headers:
-            if h in metadata:
-                row.append(metadata[h])
-            elif h in features:
-                row.append(features[h])
-            else:
-                row.append("")
+    # build row strictly following header order
+    row = []
+    for h in headers:
+        if h in metadata:
+            row.append(metadata[h])
+        elif h in features:
+            row.append(features[h])
+        else:
+            row.append("")
 
-        worksheet.append_row(row, value_input_option="USER_ENTERED")
+    worksheet.append_row(row, value_input_option="USER_ENTERED")

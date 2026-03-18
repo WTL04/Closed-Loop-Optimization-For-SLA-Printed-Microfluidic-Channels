@@ -1,4 +1,8 @@
 import json
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
 from config import (
     NUM_CHANNELS,
     CHANNEL_LENGTH_BOUNDS,
@@ -10,7 +14,7 @@ from config import (
 from ax_cbo import ContextualBayesOptAx
 from ax.core import SearchSpace, RangeParameter, ChoiceParameter, ParameterType
 from ax.core.parameter_constraint import ParameterConstraint
-import numpy as np
+from sheets_api import pullData, get_latest_col_value, append_row
 
 
 def build_search_space(num_channels: int = NUM_CHANNELS):
@@ -151,59 +155,132 @@ def compute_flow_rate_cv(flow_rates: list[float]) -> float:
     return float(np.std(arr) / mean)
 
 
-def estimate_hydraulic_resistance(length: float, width: float, height: float) -> float:
+def load_dataset(is_testing: bool, verbose=True):
     """
-    Estimate hydraulic resistance using Hagen-Poiseuille approximation for rectangular channels.
-
-    For rectangular cross-section, R ~ (12 * mu * L) / (w * h^3) for h << w
-    Using simplified form: R proportional to L / (w * h^3)
+    Returns DataFrame from Google Spreadsheet or a chosen fake dataset.
 
     Args:
-        length: Channel length (mm)
-        width: Channel width (mm)
-        height: Channel height (mm)
+        is_testing: bool
+            Uses fake dataset when True, Google Spreadsheet when False
+    """
+    if is_testing:
+        choice = input(
+            "Choose fake dataset: 1) dataset_5_batches.csv 2) dataset_10_batches.csv 3) dataset_15_batches.csv 4) dataset_30_batches.csv: "
+        )
+
+        if choice == "1":
+            path = "../../datasets/dataset_5_batches.csv"
+        elif choice == "2":
+            path = "../../datasets/dataset_10_batches.csv"
+        elif choice == "3":
+            path = "../../datasets/dataset_15_batches.csv"
+        elif choice == "4":
+            path = "../../datasets/dataset_30_batches.csv"
+        else:
+            raise ValueError("Invalid fake dataset option")
+
+        if verbose:
+            print(f"Loading fake dataset: {path}")
+        return pd.read_csv(path)
+
+    # pull from google sheets api
+    return pullData(sheet_name="Geo Test", verbose=verbose)
+
+
+def fake_objective(params: dict, context: dict, noise_std: float = 1.0) -> float:
+    """
+    Fake objective for testing only.
+    """
+    return float(np.random.normal(1e-6, noise_std))
+
+
+def get_context_snapshot():
+    """
+    Get context snapshot either manually or use fixed testing values.
+    """
+    choice = input(
+        "1) Manually input context snapshot 2) Use fixed testing context snapshot: "
+    )
+    if choice == "1":
+        return {
+            "ambient_temp": float(input("ambient_temp (°F): ")),
+            "resin_temp": float(input("resin_temp (°F): ")),
+            "resin_age": float(input("resin_age (estimated hours since opened): ")),
+        }
+    if choice == "2":
+        return {
+            "ambient_temp": 80.0,
+            "resin_temp": 80.0,
+            "resin_age": 15.0,
+        }
+    raise ValueError("Invalid context option")
+
+
+def load_data_source():
+    """
+    Select data source: Google Sheets or fake testing data.
+    """
+    choice = input("1) Use Google Sheets Data 2) Use fake testing data: ")
+    if choice == "1":
+        return True, load_dataset(is_testing=False, verbose=True)
+    if choice == "2":
+        return False, load_dataset(is_testing=True, verbose=True)
+    raise ValueError("Invalid data source option")
+
+
+def run_fake_trial(cbo, trial, context):
+    """
+    Run a fake trial for testing purposes.
+    """
+    suggested_params = trial.arms[0].parameters
+    y = fake_objective(suggested_params, context)
+    cbo.observe(trial=trial, metric_value=y)
+
+
+def run_real_trial(trial, context, num_channels: int = NUM_CHANNELS):
+    """
+    Run a real trial: append suggested params to spreadsheet and wait for user to record results.
 
     Returns:
-        Relative hydraulic resistance (arbitrary units)
+        bool: True if trial completed successfully, False otherwise
     """
-    # Avoid division by zero
-    if width <= 0 or height <= 0:
-        return float("inf")
-    return length / (width * (height**3))
-
-
-def run_cbo_for_cad():
-    """
-    Run contextual Bayesian optimization to suggest parameters for 4 independent channels.
-
-    Optimizes for uniform flow (minimizes CV of flow rates across channels).
-    """
-
-    context = {
-        "ambient_temp": 80.0,
-        "resin_temp": 80.0,
-        "resin_age": 15.0,
-    }
-
-    cbo = ContextualBayesOptAx(
-        search_space=build_search_space(),
-        metric_name="flow_rate_cv",  # Coefficient of variation - minimize for uniformity
-        minimize=True,
-    )
-
-    # Skip historical data - dataset doesn't have per-channel parameters yet
-    # Future: load CFD simulation results here
-    # df = pd.read_csv("path/to/cfd_results.csv")
-    # cbo.add_historical(df)
-    print("Running CBO (cold start) for 4 independent channels")
-    print("Optimizing for flow rate uniformity (minimize CV)")
-
-    result = cbo.suggest(isOnline=False, c_t=context)
-    trial = result["trial"]
     suggested_params = trial.arms[0].parameters
 
-    # Extract per-channel parameters for clarity
-    channels = extract_channel_params(suggested_params)
+    # get latest metadata and values from spreadsheet
+    batch_raw = get_latest_col_value(column_name="batch_id", sheet_name="Geo Test")
+    batch_id = int(batch_raw) if batch_raw is not None else 1
+    batch_id += 1
+
+    append_row(batch_id, suggested_params, context, sheet_name="Geo Test")
+
+    if input("Did the print finish? (y/n) ").lower() == "n":
+        return False
+    if (
+        input("Did you record the resulting CV into the spreadsheet? (y/n) ").lower()
+        == "n"
+    ):
+        return False
+
+    return True
+
+
+def visualize_convergence(cbo):
+    """
+    Plot optimization convergence trace.
+    """
+    trace = cbo.optimization_trace()
+    plt.plot(trace["trial_index"], trace["best_so_far"])
+    plt.title("CBO trial convergence")
+    plt.xlabel("Trial")
+    plt.ylabel("Best flow_rate_cv so far")
+    plt.show()
+
+
+def print_suggested_params(suggested_params: dict, num_channels: int = NUM_CHANNELS):
+    """
+    Print suggested parameters in a readable format.
+    """
+    channels = extract_channel_params(suggested_params, num_channels)
 
     print("\nSuggested parameters:")
     for i, ch in enumerate(channels, 1):
@@ -212,21 +289,60 @@ def run_cbo_for_cad():
         )
     print(f"  Layer thickness: {suggested_params['layer_thickness_um']} um")
 
-    # Estimate relative hydraulic resistances (for sanity check before CFD)
-    resistances = [
-        estimate_hydraulic_resistance(ch["length"], ch["width"], ch["height"])
-        for ch in channels
-    ]
-    print("\nEstimated relative hydraulic resistances:")
-    for i, r in enumerate(resistances, 1):
-        print(f"  Channel {i}: {r:.4f}")
-    print(f"  Resistance CV: {compute_flow_rate_cv(resistances):.4f}")
 
-    return suggested_params
+def save_params_to_json(params: dict, filename: str = "suggested_params.json"):
+    """
+    Save suggested parameters to JSON file.
+    """
+    with open(filename, "w") as f:
+        json.dump(params, f, indent=2)
+    print(f"Saved to {filename}")
+
+
+def main():
+    try:
+        # Get context snapshot
+        context = get_context_snapshot()
+
+        # Initialize CBO with per-channel search space
+        cbo = ContextualBayesOptAx(
+            search_space=build_search_space(),
+            metric_name="flow_rate_cv",  # Coefficient of variation - minimize for uniformity
+            minimize=True,
+        )
+
+        # Load data source (real or fake)
+        use_real_data, df = load_data_source()
+        cbo.add_historical(df)
+        print("Loaded Dataset into CBO surrogate")
+
+        # Get suggestion from CBO
+        result = cbo.suggest(isOnline=True, c_t=context)
+        trial = result["trial"]
+        suggested_params = trial.arms[0].parameters
+
+        # Print per-channel parameters
+        print_suggested_params(suggested_params)
+
+        # Save to JSON
+        save_params_to_json(suggested_params)
+
+        if use_real_data:
+            completed = run_real_trial(trial, context)
+            if not completed:
+                return
+            cv = float(
+                get_latest_col_value(column_name="flow_rate_cv", sheet_name="Geo Test")
+            )
+            cbo.observe(trial=trial, metric_value=cv)
+        else:
+            run_fake_trial(cbo, trial, context)
+
+        visualize_convergence(cbo)
+
+    except ValueError as e:
+        print(e)
 
 
 if __name__ == "__main__":
-    params = run_cbo_for_cad()
-    with open("suggested_params.json", "w") as f:
-        json.dump(params, f)
-    print("Saved to suggested_params.json")
+    main()

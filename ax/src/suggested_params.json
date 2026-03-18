@@ -1,1 +1,18 @@
-{"layer_thickness_um": 100, "channel_1_length": 15.521831959486008, "channel_1_width": 0.429191541671753, "channel_1_height": 0.4774889469146729, "channel_2_length": 17.641610503196716, "channel_2_width": 0.12249628305435181, "channel_2_height": 0.5097630560398102, "channel_3_length": 18.74601513147354, "channel_3_width": 0.18842965364456177, "channel_3_height": 0.6559285342693328, "channel_4_length": 19.050473868846893, "channel_4_width": 0.18491622805595398, "channel_4_height": 0.13459251001477243, "ambient_temp": 80.0, "resin_temp": 80.0, "resin_age": 15.0}
+{
+  "layer_thickness_um": 50,
+  "channel_1_length": 16.580148062591917,
+  "channel_1_width": 0.15181333260110325,
+  "channel_1_height": 0.7742871688705,
+  "channel_2_length": 17.838108562383663,
+  "channel_2_width": 0.24053720770455767,
+  "channel_2_height": 0.5089717942706368,
+  "channel_3_length": 15.114060246122058,
+  "channel_3_width": 0.25797433240498374,
+  "channel_3_height": 0.9026406541757722,
+  "channel_4_length": 17.332449564986597,
+  "channel_4_width": 0.35599720862372547,
+  "channel_4_height": 0.9138149130447438,
+  "ambient_temp": 80.0,
+  "resin_temp": 80.0,
+  "resin_age": 15.0
+}

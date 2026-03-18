@@ -94,17 +94,17 @@ def load_dataset(is_testing: bool, verbose=True):
     """
     if is_testing:
         choice = input(
-            "Choose fake dataset: 1) dataset.csv 2) dataset_5_batches.csv 3) dataset_10_batches.csv 4) dataset_15_batches.csv: "
+            "Choose fake dataset: 1) dataset_5_batches.csv 2) dataset_10_batches.csv 3) dataset_15_batches.csv 4) dataset.csv: "
         )
 
         if choice == "1":
-            path = "../../datasets/dataset.csv"  # has 30 batches
-        elif choice == "2":
             path = "../../datasets/dataset_5_batches.csv"
-        elif choice == "3":
+        elif choice == "2":
             path = "../../datasets/dataset_10_batches.csv"
-        elif choice == "4":
+        elif choice == "3":
             path = "../../datasets/dataset_15_batches.csv"
+        elif choice == "4":
+            path = "../../datasets/dataset.csv"  # has 30 batches
         else:
             raise ValueError("Invalid fake dataset option")
 
@@ -164,7 +164,7 @@ def run_real_trial(trial, context):
     batch_id = int(batch_raw) if batch_raw is not None else 1
     batch_id += 1
 
-    append_row(batch_id, NUM_CHANNELS, suggested_params, context, sheet_name="Geo Test")
+    append_row(batch_id, suggested_params, context, sheet_name="Geo Test")
 
     if input("Did the print finish? (y/n) ").lower() == "n":
         return False
