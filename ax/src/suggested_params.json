@@ -1,0 +1,18 @@
+{
+  "layer_thickness_um": 50,
+  "channel_1_length": 16.234976990282735,
+  "channel_1_width": 0.16468545267265092,
+  "channel_1_height": 0.6999999999999955,
+  "channel_2_length": 16.93010820059995,
+  "channel_2_width": 0.23630079660607128,
+  "channel_2_height": 0.5565225552862966,
+  "channel_3_length": 15.158544517568554,
+  "channel_3_width": 0.25392862905613495,
+  "channel_3_height": 0.6999999999999965,
+  "channel_4_length": 16.838473177347932,
+  "channel_4_width": 0.3662455325824311,
+  "channel_4_height": 0.7,
+  "ambient_temp": 80.0,
+  "resin_temp": 80.0,
+  "resin_age": 15.0
+}

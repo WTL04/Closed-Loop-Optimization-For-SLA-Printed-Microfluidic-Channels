@@ -18,7 +18,7 @@ from sheets_api import pullData, get_latest_col_value, append_row
 
 # set default values to global vars
 BATCH_ID = 1
-NUM_CHANNELS = 13
+NUM_CHANNELS = 5
 
 
 def build_search_space():
@@ -37,18 +37,26 @@ def build_search_space():
                 is_ordered=True,
                 sort_values=True,
             ),
-            ChoiceParameter(
-                name="fit_adjustment",
-                parameter_type=ParameterType.INT,
-                values=[-250, -150, -50, 0, 50, 150, 250],
-                is_ordered=True,
-                sort_values=True,
-            ),
+            # TODO: est range, replace with real range later
             RangeParameter(
-                name="z_rotation_deg",
+                name="channel_length",
                 parameter_type=ParameterType.FLOAT,
-                lower=0.0,
+                lower=30.0,
                 upper=90.0,
+            ),
+            # TODO: est range, replace with real range later
+            RangeParameter(
+                name="channel_width",
+                parameter_type=ParameterType.FLOAT,
+                lower=10.0,
+                upper=30.0,
+            ),
+            # TODO: est range, replace with real range later
+            RangeParameter(
+                name="channel_height",
+                parameter_type=ParameterType.FLOAT,
+                lower=10.0,
+                upper=30.0,
             ),
             # --------
             # Context
@@ -86,17 +94,17 @@ def load_dataset(is_testing: bool, verbose=True):
     """
     if is_testing:
         choice = input(
-            "Choose fake dataset: 1) dataset.csv 2) dataset_5_batches.csv 3) dataset_10_batches.csv 4) dataset_15_batches.csv: "
+            "Choose fake dataset: 1) dataset_5_batches.csv 2) dataset_10_batches.csv 3) dataset_15_batches.csv 4) dataset.csv: "
         )
 
         if choice == "1":
-            path = "../datasets/dataset.csv"  # has 30 batches
+            path = "../../datasets/dataset_5_batches.csv"
         elif choice == "2":
-            path = "../datasets/dataset_5_batches.csv"
+            path = "../../datasets/dataset_10_batches.csv"
         elif choice == "3":
-            path = "../datasets/dataset_10_batches.csv"
+            path = "../../datasets/dataset_15_batches.csv"
         elif choice == "4":
-            path = "../datasets/dataset_15_batches.csv"
+            path = "../../datasets/dataset.csv"  # has 30 batches
         else:
             raise ValueError("Invalid fake dataset option")
 
@@ -104,7 +112,8 @@ def load_dataset(is_testing: bool, verbose=True):
             print(f"Loading fake dataset: {path}")
         return pd.read_csv(path)
 
-    return pullData(verbose=verbose)
+    # pull from google sheets api
+    return pullData(sheet_name="Geo Test", verbose=verbose)
 
 
 def fake_objective(params: dict, context: dict, noise_std: float = 1.0) -> float:
@@ -151,11 +160,11 @@ def run_real_trial(trial, context):
     suggested_params = trial.arms[0].parameters
 
     # get latest metadata and values from spreadsheet
-    batch_raw = get_latest_col_value("batch_id")
+    batch_raw = get_latest_col_value(column_name="batch_id", sheet_name="Geo Test")
     batch_id = int(batch_raw) if batch_raw is not None else 1
     batch_id += 1
 
-    append_row(batch_id, NUM_CHANNELS, suggested_params, context)
+    append_row(batch_id, suggested_params, context, sheet_name="Geo Test")
 
     if input("Did the print finish? (y/n) ").lower() == "n":
         return False
@@ -177,7 +186,7 @@ def visualize_convergence(cbo):
     plt.show()
 
 
-# ------------------------ testing ----------------------------
+# ------------------------ optimization visualizations----------------------------
 def run_single_experiment(dataset_path: str, context: dict, seed: int = 0):
     """
     Runs one experiment: load dataset, warm-start Ax with historical data,
@@ -263,7 +272,11 @@ def main():
             completed = run_real_trial(trial, context)
             if not completed:
                 return
-            cv = float(get_latest_col_value("channel_flow_rate_ml_per_min"))
+            cv = float(
+                get_latest_col_value(
+                    column_name="channel_flow_rate_ml_per_min", sheet_name="Geo Test"
+                )
+            )
             cbo.observe(trial=trial, metric_value=cv)
         else:
             run_fake_trial(cbo, trial, context)
