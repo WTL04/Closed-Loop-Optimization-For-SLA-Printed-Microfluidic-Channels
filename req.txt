@@ -36,3 +36,5 @@ gspread
 gspread-dataframe
 google-auth
 
+# CAD CFD
+cadquery
