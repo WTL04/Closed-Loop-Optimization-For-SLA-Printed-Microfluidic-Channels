@@ -4,3 +4,19 @@ venv310/
 .ipynb_checkpoints/
 __pycache__
 google_sheets_creds.json
+
+__pycache__/
+*.pyc
+*.pyo
+
+# OpenFOAM generated files
+cfd/channelCase/constant/polyMesh/
+cfd/channelCase/[1-9]*/
+cfd/channelCase/[0-9][0-9]*/
+cfd/channelCase/postProcessing/
+cfd/channelCase/case.foam
+
+# OS / editor
+.vscode/
+.DS_Store
+Thumbs.db
