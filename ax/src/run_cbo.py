@@ -165,17 +165,17 @@ def load_dataset(is_testing: bool, verbose=True):
     """
     if is_testing:
         choice = input(
-            "Choose fake dataset: 1) dataset_5_batches.csv 2) dataset_10_batches.csv 3) dataset_15_batches.csv 4) dataset_30_batches.csv: "
+            "Choose fake dataset: 1) dataset_30_batches.csv 2) dataset_5_batches.csv 3) dataset_10_batches.csv 4) dataset_15_batches.csv: "
         )
 
         if choice == "1":
-            path = "../../datasets/dataset_5_batches.csv"
-        elif choice == "2":
-            path = "../../datasets/dataset_10_batches.csv"
-        elif choice == "3":
-            path = "../../datasets/dataset_15_batches.csv"
-        elif choice == "4":
             path = "../../datasets/dataset_30_batches.csv"
+        elif choice == "2":
+            path = "../../datasets/dataset_5_batches.csv"
+        elif choice == "3":
+            path = "../../datasets/dataset_10_batches.csv"
+        elif choice == "4":
+            path = "../../datasets/dataset_15_batches.csv"
         else:
             raise ValueError("Invalid fake dataset option")
 
@@ -184,7 +184,7 @@ def load_dataset(is_testing: bool, verbose=True):
         return pd.read_csv(path)
 
     # pull from google sheets api
-    return pullData(sheet_name="Geo Test", verbose=verbose)
+    return pullData(sheet_name="Ax", verbose=verbose)
 
 
 def fake_objective(params: dict, context: dict, noise_std: float = 1.0) -> float:
