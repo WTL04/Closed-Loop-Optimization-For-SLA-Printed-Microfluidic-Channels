@@ -14,7 +14,12 @@ from config import (
     BASE_WIDTH,
 )
 from ax_cbo import ContextualBayesOptAx
-from ax.core import SearchSpace, RangeParameter, ChoiceParameter, ParameterType
+from ax.core import (
+    SearchSpace,
+    RangeParameter,
+    ChoiceParameter,
+    ParameterType,
+)
 from ax.core.parameter_constraint import ParameterConstraint
 from sheets_api import pullData, get_latest_col_value, append_row
 
@@ -28,9 +33,10 @@ def build_search_space(num_channels: int = NUM_CHANNELS):
 
     Returns:
         SearchSpace with:
-        - 3 × num_channels channel dimension parameters
-        - 1 layer thickness parameter
-        - 3 context parameters (ambient_temp, resin_temp, resin_age)
+        - 3 × num_channels channel dimension parameters (TUNABLE)
+        - 1 layer thickness parameter (TUNABLE)
+        - 3 context parameters: ambient_temp, resin_temp, resin_age (FIXED)
+        - 3 × num_channels post-print warp delta parameters (FIXED)
     """
     parameters = []
 
@@ -93,6 +99,33 @@ def build_search_space(num_channels: int = NUM_CHANNELS):
             ),
         ]
     )
+
+    # post-print warp deltas (measured - intended) from the previous print.
+    # fixed at suggestion time via ObservationFeatures, never optimized over.
+    # stored in search space so add_historical() can index them by name.
+    for i in range(1, num_channels + 1):
+        parameters.extend(
+            [
+                RangeParameter(
+                    name=f"channel_{i}_post_print_length_delta",
+                    parameter_type=ParameterType.FLOAT,
+                    lower=-2.0,  # bounds are placeholder
+                    upper=2.0,
+                ),
+                RangeParameter(
+                    name=f"channel_{i}_post_print_width_delta",
+                    parameter_type=ParameterType.FLOAT,
+                    lower=-1.0,  # bounds are placeholder
+                    upper=1.0,
+                ),
+                RangeParameter(
+                    name=f"channel_{i}_post_print_height_delta",
+                    parameter_type=ParameterType.FLOAT,
+                    lower=-0.5,  # bounds are placeholder
+                    upper=0.5,
+                ),
+            ]
+        )
 
     # Constraint: sum of all channel widths + minimum spacing must fit in base
     # sum(channel_i_width) + (num_channels - 1) * MIN_SPACING <= BASE_WIDTH
@@ -196,26 +229,38 @@ def fake_objective(params: dict, context: dict, noise_std: float = 1.0) -> float
     return float(np.random.normal(1e-6, noise_std))
 
 
-def get_context_snapshot():
+def get_context_snapshot(prev_warp: dict | None = None) -> dict:
     """
     Get context snapshot either manually or use fixed testing values.
+    Set warp deltas from previous print as context.
     """
     choice = input(
         "1) Manually input context snapshot 2) Use fixed testing context snapshot: "
     )
     if choice == "1":
-        return {
+        base = {
             "ambient_temp": float(input("ambient_temp (°F): ")),
             "resin_temp": float(input("resin_temp (°F): ")),
             "resin_age": float(input("resin_age (estimated hours since opened): ")),
         }
-    if choice == "2":
-        return {
+    elif choice == "2":
+        base = {
             "ambient_temp": 80.0,
             "resin_temp": 80.0,
             "resin_age": 15.0,
         }
-    raise ValueError("Invalid context option")
+    else:
+        raise ValueError("Invalid context option")
+
+    # warp deltas from the previous print, zeroed out on first run
+    if prev_warp is None:
+        prev_warp = {
+            f"channel_{i}_post_print_{dim}_delta": 0.0
+            for i in range(1, NUM_CHANNELS + 1)
+            for dim in ("length", "width", "height")
+        }
+
+    return {**base, **prev_warp}
 
 
 def load_data_source():
@@ -239,7 +284,10 @@ def run_fake_trial(cbo, trial, context):
     cbo.observe(trial=trial, metric_value=y)
 
 
-def run_real_trial(trial, context, num_channels: int = NUM_CHANNELS):
+# returns (bool, dict | None) to pass warp deltas forward to next trial
+def run_real_trial(
+    trial, context, num_channels: int = NUM_CHANNELS
+) -> tuple[bool, dict | None]:
     """
     Run a real trial: append suggested params to spreadsheet and wait for user to record results.
 
@@ -256,14 +304,27 @@ def run_real_trial(trial, context, num_channels: int = NUM_CHANNELS):
     append_row(batch_id, suggested_params, context, sheet_name="Geo Test")
 
     if input("Did the print finish? (y/n) ").lower() == "n":
-        return False
+        return False, None
+
+    #  collect independant per-channel post-print measurements as deltas (measured - intended)
+    print("\nEnter post-print measurements for each channel:")
+    warp_deltas = {}
+    for i in range(1, num_channels + 1):
+        print(f"  Channel {i}:")
+        for dim in ("length", "width", "height"):
+            intended = suggested_params[f"channel_{i}_{dim}"]
+            measured = float(
+                input(f"    Measured {dim} (intended={intended:.3f} mm): ")
+            )
+            warp_deltas[f"channel_{i}_post_print_{dim}_delta"] = measured - intended
+
     if (
         input("Did you record the resulting CV into the spreadsheet? (y/n) ").lower()
         == "n"
     ):
-        return False
+        return False, None
 
-    return True
+    return True, warp_deltas
 
 
 def visualize_convergence(cbo):
@@ -303,8 +364,11 @@ def save_params_to_json(params: dict, filename: str = "suggested_params.json"):
 
 def main():
     try:
+        # no warp history on first run
+        prev_warp = None
+
         # Get context snapshot
-        context = get_context_snapshot()
+        context = get_context_snapshot(prev_warp=prev_warp)
 
         # Initialize CBO with per-channel search space
         cbo = ContextualBayesOptAx(
@@ -330,7 +394,8 @@ def main():
         save_params_to_json(suggested_params)
 
         if use_real_data:
-            completed = run_real_trial(trial, context)
+            # unpack warp deltas to carry forward to next trial
+            completed, prev_warp = run_real_trial(trial, context)
             if not completed:
                 return
             cv = float(
@@ -339,6 +404,7 @@ def main():
             cbo.observe(trial=trial, metric_value=cv)
         else:
             run_fake_trial(cbo, trial, context)
+            prev_warp = None
 
         visualize_convergence(cbo)
 
