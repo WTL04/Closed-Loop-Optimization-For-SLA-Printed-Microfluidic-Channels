@@ -109,20 +109,20 @@ def build_search_space(num_channels: int = NUM_CHANNELS):
                 RangeParameter(
                     name=f"channel_{i}_post_print_length_delta",
                     parameter_type=ParameterType.FLOAT,
-                    lower=-2.0,  # bounds are placeholder
-                    upper=2.0,
+                    lower=-0.3,  # ~2% of 15mm nominal
+                    upper=0.3,
                 ),
                 RangeParameter(
                     name=f"channel_{i}_post_print_width_delta",
                     parameter_type=ParameterType.FLOAT,
-                    lower=-1.0,  # bounds are placeholder
-                    upper=1.0,
+                    lower=-0.05,  # ~15% of 0.3mm nominal — microchannels have worse relative error
+                    upper=0.05,
                 ),
                 RangeParameter(
                     name=f"channel_{i}_post_print_height_delta",
                     parameter_type=ParameterType.FLOAT,
-                    lower=-0.5,  # bounds are placeholder
-                    upper=0.5,
+                    lower=-0.05,  # same reasoning as width
+                    upper=0.05,
                 ),
             ]
         )
