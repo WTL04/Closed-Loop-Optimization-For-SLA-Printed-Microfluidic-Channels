@@ -4,6 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import cadquery as cq
 
 from config import (
     NUM_CHANNELS,
@@ -12,6 +13,8 @@ from config import (
     CHANNEL_HEIGHT_BOUNDS,
     MIN_CHANNEL_SPACING,
     BASE_WIDTH,
+    BASE_LENGTH,
+    BASE_THICKNESS,
 )
 from ax_cbo import ContextualBayesOptAx
 from ax.core import (
@@ -291,59 +294,104 @@ def run_fake_trial(cbo, trial, context):
 # returns (bool, dict | None) to pass warp deltas forward to next trial
 def run_real_trial(
     trial, context, num_channels: int = NUM_CHANNELS
-) -> tuple[bool, dict | None]:
+) -> tuple[bool, dict | None, int]:
     """
-    Run a real trial: append suggested params to spreadsheet and wait for user to record results.
+    Run a real trial: save suggested params to JSON and append to Google Sheets.
 
     Returns:
         bool: True if trial completed successfully, False otherwise
+        dict: warp deltas to pass forward to next trial
+        int: batch_id for reference
     """
     suggested_params = trial.arms[0].parameters
 
-    # get latest metadata and values from spreadsheet
     batch_raw = get_latest_col_value(column_name="batch_id", sheet_name="Ax")
     batch_id = int(batch_raw) if batch_raw is not None else 1
     batch_id += 1
 
+    save_params_to_json(suggested_params, batch_id=batch_id)
+
+    # append batch to channel dimensions to sheets
     append_row(batch_id, suggested_params, context, sheet_name="Ax")
+    print(f"\nAppended batch {batch_id} to Google Sheets.")
 
-    if input("Did the print finish? (y/n) ").lower() == "n":
-        return False, None
-
-    #  collect independant per-channel post-print measurements as deltas (measured - intended)
-    print("\nEnter post-print measurements for each channel:")
+    # set deltas values in sheets to default as 0.0
     warp_deltas = {}
     for i in range(1, num_channels + 1):
-        print(f"  Channel {i}:")
         for dim in ("length", "width", "height"):
-            intended = suggested_params[f"channel_{i}_{dim}"]
-            measured = float(
-                input(f"    Measured {dim} (intended={intended:.3f} mm): ")
-            )
-            warp_deltas[f"channel_{i}_post_print_{dim}_delta"] = measured - intended
+            warp_deltas[f"channel_{i}_post_print_{dim}_delta"] = 0.0
 
-    # fill in delta columns on the existing row
-    update_row(batch_id, warp_deltas, sheet_name="Ax")
-
-    # collect per-channel flow rates
-    print("\nEnter measured flow rates for each channel:")
+    # set flow rate values in sheets to default as 0.0
     flow_rates = {}
-    flow_values = []
     for i in range(1, num_channels + 1):
-        val = float(input(f"  channel_{i}_flow_rate_ml_per_min: "))
-        flow_rates[f"channel_{i}_flow_rate_ml_per_min"] = val
-        flow_values.append(val)
+        flow_rates[f"channel_{i}_flow_rate_ml_per_min"] = 0.0
+    flow_rates["flow_rate_cv"] = 0.0
 
-    # compute CV automatically
-    cv = compute_flow_rate_cv(flow_values)
-    flow_rates["flow_rate_cv"] = cv
-    print(f"  Computed flow_rate_cv: {cv:.6f}")
+    print("Run post_print.py to record measurements.")
 
-    # fill in independant chnanel flow rate cloumns in existing row
-    update_row(batch_id, flow_rates, sheet_name="Ax")
-    print("\nGoogle Sheets Dataset has been updated")
+    return True, warp_deltas, batch_id
 
-    return True, warp_deltas
+
+def build_cad_model(params: dict, num_channels: int = NUM_CHANNELS):
+    """
+    Build CAD model with 4 independent channel rows.
+
+    Channels are arranged as parallel rows along the Y-axis with minimum spacing.
+    Each channel has its own length, width, and height.
+
+    Args:
+        params: Parameter dict from CBO with channel_i_length/width/height
+        num_channels: Number of channels
+
+    Returns:
+        CadQuery Workplane object ready for export
+    """
+    channels = extract_channel_params(params, num_channels)
+
+    # Create base plate
+    base = cq.Workplane("XY").box(BASE_LENGTH, BASE_WIDTH, BASE_THICKNESS)
+
+    # Calculate Y positions for each channel (distributed with minimum spacing)
+    total_width = sum(ch["width"] for ch in channels)
+    total_spacing = (num_channels - 1) * MIN_CHANNEL_SPACING
+
+    # Start position (bottom of first channel from center)
+    y_start = -(total_width + total_spacing) / 2
+
+    # Cut each channel into the base
+    current_y = y_start
+    result = base
+
+    for i, ch in enumerate(channels):
+        # Channel center Y position
+        channel_center_y = current_y + ch["width"] / 2
+
+        # Cut into base from top surface
+        channel_center_z = BASE_THICKNESS / 2  # center of base plate
+
+        # Create channel cavity
+        channel = (
+            cq.Workplane("XY")
+            .box(ch["length"], ch["width"], ch["height"])
+            .translate((0, channel_center_y, channel_center_z))
+        )
+
+        result = result.cut(channel)
+
+        # Move to next channel position
+        current_y += ch["width"] + MIN_CHANNEL_SPACING
+
+    return result
+
+
+def export_cad_model(params: dict, filename: str = "../cad_models/channels_fluid.stl"):
+    """
+    Build and export CAD model from suggested params.
+    """
+    model = build_cad_model(params)
+    cq.exporters.export(model, filename)
+    print(f"CFD fluid-domain STL generated: {filename}")
+    print(f"Path to Model: {filename}")
 
 
 def visualize_convergence(cbo):
@@ -372,55 +420,76 @@ def print_suggested_params(suggested_params: dict, num_channels: int = NUM_CHANN
     print(f"  Layer thickness: {suggested_params['layer_thickness_um']} um")
 
 
-def save_params_to_json(params: dict, filename: str = "suggested_params.json"):
+def save_params_to_json(
+    params: dict, batch_id: int = None, filename: str = "suggested_params.json"
+):
     """
     Save suggested parameters to JSON file.
     """
+    data = {"batch_id": batch_id, **params}
     with open(filename, "w") as f:
-        json.dump(params, f, indent=2)
+        json.dump(data, f, indent=2)
     print(f"Saved to {filename}")
+
+
+def observe_previous_trial(cbo, sheet_name: str = "Ax"):
+    """
+    Check for previous trial with flow_rate_cv in Google Sheets and observe it.
+    Returns the observed trial if found, None otherwise.
+    """
+    cv_raw = get_latest_col_value(column_name="flow_rate_cv", sheet_name=sheet_name)
+    if cv_raw is not None and cv_raw != "":
+        cv = float(cv_raw)
+        trials = list(cbo.experiment.trials.values())
+        if trials:
+            trial = trials[-1]
+            if trial.status.is_completed:
+                print(f"\nPrevious trial already observed with flow_rate_cv: {cv:.6f}")
+                return None
+            cbo.observe(trial=trial, metric_value=cv)
+            print(f"\nObserved previous trial with flow_rate_cv: {cv:.6f}")
+            return trial
+    return None
 
 
 def main():
     try:
-        # no warp history on first run
         prev_warp = None
 
-        # Get context snapshot
         context = get_context_snapshot(prev_warp=prev_warp)
 
-        # Initialize CBO with per-channel search space
         cbo = ContextualBayesOptAx(
             search_space=build_search_space(),
-            metric_name="flow_rate_cv",  # Coefficient of variation - minimize for uniformity
+            metric_name="flow_rate_cv",
             minimize=True,
         )
 
-        # Load data source (real or fake)
         use_real_data, df = load_data_source()
         cbo.add_historical(df)
         print("Loaded Dataset into CBO surrogate")
 
-        # Get suggestion from CBO
+        if use_real_data:
+            observe_previous_trial(cbo)
+
         result = cbo.suggest(isOnline=True, c_t=context)
         trial = result["trial"]
         suggested_params = trial.arms[0].parameters
 
-        # Print per-channel parameters
         print_suggested_params(suggested_params)
 
-        # Save to JSON
-        save_params_to_json(suggested_params)
+        print("\n1) Export CAD Model \n2) Skip")
+        cad_choice = input("\nPlease choose one of the two: ")
+
+        if cad_choice == "1":
+            export_cad_model(suggested_params)
+        elif cad_choice != "2":
+            raise ValueError("Invalid CAD option")
 
         if use_real_data:
-            # unpack warp deltas to carry forward to next trial
-            completed, prev_warp = run_real_trial(trial, context)
+            completed, prev_warp, batch_id = run_real_trial(trial, context)
             if not completed:
                 return
-            cv = float(
-                get_latest_col_value(column_name="flow_rate_cv", sheet_name="Ax")
-            )
-            cbo.observe(trial=trial, metric_value=cv)
+            print(f"\nBatch {batch_id} saved. Run print, then post_print.py")
         else:
             run_fake_trial(cbo, trial, context)
             prev_warp = None
