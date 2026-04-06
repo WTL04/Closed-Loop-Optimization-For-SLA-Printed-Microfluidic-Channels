@@ -297,11 +297,11 @@ def run_real_trial(
     suggested_params = trial.arms[0].parameters
 
     # get latest metadata and values from spreadsheet
-    batch_raw = get_latest_col_value(column_name="batch_id", sheet_name="Geo Test")
+    batch_raw = get_latest_col_value(column_name="batch_id", sheet_name="Ax")
     batch_id = int(batch_raw) if batch_raw is not None else 1
     batch_id += 1
 
-    append_row(batch_id, suggested_params, context, sheet_name="Geo Test")
+    append_row(batch_id, suggested_params, context, sheet_name="Ax")
 
     if input("Did the print finish? (y/n) ").lower() == "n":
         return False, None
@@ -399,7 +399,7 @@ def main():
             if not completed:
                 return
             cv = float(
-                get_latest_col_value(column_name="flow_rate_cv", sheet_name="Geo Test")
+                get_latest_col_value(column_name="flow_rate_cv", sheet_name="Ax")
             )
             cbo.observe(trial=trial, metric_value=cv)
         else:
