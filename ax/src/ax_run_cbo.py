@@ -21,7 +21,7 @@ from ax.core import (
     ParameterType,
 )
 from ax.core.parameter_constraint import ParameterConstraint
-from sheets_api import pullData, get_latest_col_value, append_row
+from sheets_api import pullData, get_latest_col_value, append_row, update_row
 
 
 def build_search_space(num_channels: int = NUM_CHANNELS):
@@ -317,6 +317,26 @@ def run_real_trial(
                 input(f"    Measured {dim} (intended={intended:.3f} mm): ")
             )
             warp_deltas[f"channel_{i}_post_print_{dim}_delta"] = measured - intended
+
+    # fill in delta columns on the existing row
+    update_row(batch_id, warp_deltas, sheet_name="Ax")
+
+    # collect per-channel flow rates
+    print("\nEnter measured flow rates for each channel:")
+    flow_rates = {}
+    flow_values = []
+    for i in range(1, num_channels + 1):
+        val = float(input(f"  channel_{i}_flow_rate_ml_per_min: "))
+        flow_rates[f"channel_{i}_flow_rate_ml_per_min"] = val
+        flow_values.append(val)
+
+    # compute CV automatically
+    cv = compute_flow_rate_cv(flow_values)
+    flow_rates["flow_rate_cv"] = cv
+    print(f"  Computed flow_rate_cv: {cv:.6f}")
+
+    # fill in independant chnanel flow rate cloumns in existing row
+    update_row(batch_id, flow_rates, sheet_name="Ax")
 
     if (
         input("Did you record the resulting CV into the spreadsheet? (y/n) ").lower()

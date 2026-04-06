@@ -116,3 +116,39 @@ def append_row(
             row.append("")
 
     worksheet.append_row(row, value_input_option="USER_ENTERED")
+
+
+def update_row(batch_id: int, updates: dict, sheet_name: str = "Sheet1"):
+    """
+    Update specific columns in an existing row identified by batch_id.
+
+    Args:
+        batch_id: The batch_id to look up in column 1
+        updates: Dict of {column_name: value} to write into that row
+        sheet_name: Worksheet name
+    """
+
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key(SHEET_ID)
+    worksheet = sheet.worksheet(sheet_name)
+
+    headers = worksheet.row_values(1)
+    if not headers:
+        raise ValueError("Header row is empty.")
+
+    # Find the row index by batch_id (column 1)
+    batch_col = worksheet.col_values(1)
+    try:
+        row_index = batch_col.index(str(batch_id)) + 1  # 1-indexed
+    except ValueError:
+        raise ValueError(f"batch_id {batch_id} not found in sheet '{sheet_name}'")
+
+    # Write only the specified columns
+    for col_name, value in updates.items():
+        if col_name not in headers:
+            continue
+        col_index = headers.index(col_name) + 1  # 1-indexed
+        try:
+            worksheet.update_cell(row_index, col_index, float(value))
+        except (TypeError, ValueError):
+            worksheet.update_cell(row_index, col_index, value)
