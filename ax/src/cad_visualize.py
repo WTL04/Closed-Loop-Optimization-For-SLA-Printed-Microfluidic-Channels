@@ -90,8 +90,21 @@ def build_cad_model(params: dict, num_channels: int = NUM_CHANNELS):
     return result
 
 
-with open("suggested_params.json") as f:
-    params = json.load(f)
+if __name__ == "__main__":
+    with open("suggested_params.json") as f:
+        params = json.load(f)
 
-model = build_cad_model(params)
-show_object(model)
+    model = build_cad_model(params)
+
+    user_input = input(
+        "\n 1) Export CAD Model \n 2) View CAD model in cq-editor \n (Default: 1): "
+    )
+
+    if user_input == "1":
+        cq.exporters.export(model, "../cad_models/channels_fluid.stl")
+        print("CFD fluid-domain STL generated: channels_fluid.stl")
+        print("Path to Model: ../cad_models/channel_test.stl")
+    elif user_input == "2":
+        show_object(model)
+    else:
+        raise ValueError("Invalid export/view option")

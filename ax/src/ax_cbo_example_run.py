@@ -93,9 +93,10 @@ def load_dataset(is_testing: bool, verbose=True):
             Uses fake dataset when True, Google Spreadsheet when False
     """
     if is_testing:
-        choice = input(
-            "Choose fake dataset: 1) dataset_5_batches.csv 2) dataset_10_batches.csv 3) dataset_15_batches.csv 4) dataset.csv: "
+        print(
+            "\n1) dataset_5_batches.csv \n2) dataset_10_batches.csv \n3) dataset_15_batches.csv \n4) dataset.csv"
         )
+        choice = input("\nPlease choose one of the four: ")
 
         if choice == "1":
             path = "../../datasets/dataset_5_batches.csv"
@@ -143,7 +144,10 @@ def get_context_snapshot():
 
 
 def load_data_source():
-    choice = input("1) Use Google Sheets Data 2) Use fake testing data: ")
+    print(
+        "\n1) Use Google Sheets Data \n2) Use fake testing data"
+    )
+    choice = input("\nPlease choose one of the two: ")
     if choice == "1":
         return True, load_dataset(is_testing=False, verbose=True)
     if choice == "2":

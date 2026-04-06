@@ -199,9 +199,10 @@ def load_dataset(is_testing: bool, verbose=True):
             Uses fake dataset when True, Google Spreadsheet when False
     """
     if is_testing:
-        choice = input(
-            "Choose fake dataset: 1) dataset_30_batches.csv 2) dataset_5_batches.csv 3) dataset_10_batches.csv 4) dataset_15_batches.csv: "
+        print(
+            "\n1) dataset_30_batches.csv \n2) dataset_5_batches.csv \n3) dataset_10_batches.csv \n4) dataset_15_batches.csv"
         )
+        choice = input("\nPlease choose one of the four: ")
 
         if choice == "1":
             path = "../../datasets/dataset_30_batches.csv"
@@ -234,9 +235,11 @@ def get_context_snapshot(prev_warp: dict | None = None) -> dict:
     Get context snapshot either manually or use fixed testing values.
     Set warp deltas from previous print as context.
     """
-    choice = input(
-        "1) Manually input context snapshot 2) Use fixed testing context snapshot: "
+    print(
+        "\n1) Manually input context snapshot \n2) Use fixed testing context snapshot "
     )
+    choice = input("\nPlease choose one of the two: ")
+
     if choice == "1":
         base = {
             "ambient_temp": float(input("ambient_temp (°F): ")),
@@ -267,7 +270,8 @@ def load_data_source():
     """
     Select data source: Google Sheets or fake testing data.
     """
-    choice = input("1) Use Google Sheets Data 2) Use fake testing data: ")
+    print("\n1) Use Google Sheets Data \n2) Use fake testing data")
+    choice = input("\nPlease choose one of the two: ")
     if choice == "1":
         return True, load_dataset(is_testing=False, verbose=True)
     if choice == "2":
@@ -337,12 +341,7 @@ def run_real_trial(
 
     # fill in independant chnanel flow rate cloumns in existing row
     update_row(batch_id, flow_rates, sheet_name="Ax")
-
-    if (
-        input("Did you record the resulting CV into the spreadsheet? (y/n) ").lower()
-        == "n"
-    ):
-        return False, None
+    print("\nGoogle Sheets Dataset has been updated")
 
     return True, warp_deltas
 
