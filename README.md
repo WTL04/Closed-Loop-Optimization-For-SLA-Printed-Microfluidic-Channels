@@ -109,10 +109,7 @@ Your repo structure should look like:
 ├── cfd/
 │   └── channelCase/
 
-```
-
 ---
-
 # 7. Ensure STL is present
 
 ```bash
