@@ -1,78 +1,55 @@
 import cadquery as cq
-import json
 
-# Fixed nominal dimensions for every channel (mm)
+# Fixed nominal dimensions (mm)
 BASE_LENGTH = 40.0
 BASE_WIDTH = 0.5
 BASE_HEIGHT = 0.5
 
-# Extra CFD extensions (mm)
+# CFD extensions (mm)
 INLET_LENGTH = 5.0
 OUTLET_LENGTH = 5.0
 
-# Shift channel so it stays inside blockMesh domain
+# Shift to keep geometry inside mesh
 X_SHIFT = 30.0
 
 
-def get_post_print_dimensions(params: dict, channel_index: int = 1) -> dict:
-    """
-    Compute post-print dimensions using:
-        new = old + delta
+def get_user_deltas():
+    print("\nEnter post-print deltas (in mm):")
 
-    Here old dimensions are fixed for every channel:
-        L = 40 mm
-        W = 0.5 mm
-        H = 0.5 mm
-    """
+    length_delta = float(input("channel post print length delta: "))
+    width_delta = float(input("channel post print width delta: "))
+    height_delta = float(input("channel post print height delta: "))
 
-    length_delta = float(params.get(f"channel_{channel_index}_post_print_length_delta", 0.0))
-    width_delta = float(params.get(f"channel_{channel_index}_post_print_width_delta", 0.0))
-    height_delta = float(params.get(f"channel_{channel_index}_post_print_height_delta", 0.0))
-
-    post_length = BASE_LENGTH + length_delta
-    post_width = BASE_WIDTH + width_delta
-    post_height = BASE_HEIGHT + height_delta
-
-    if post_length <= 0 or post_width <= 0 or post_height <= 0:
-        raise ValueError(
-            f"Non-positive post-print dimensions for channel {channel_index}: "
-            f"L={post_length}, W={post_width}, H={post_height}"
-        )
-
-    return {
-        "length": post_length,
-        "width": post_width,
-        "height": post_height,
-    }
+    return length_delta, width_delta, height_delta
 
 
-def build_single_channel_parts(params: dict, channel_index: int = 1):
-    """
-    Build separate CAD bodies for:
-    - full fluid volume
-    - walls
-    - inlet face
-    - outlet face
-    """
+def compute_post_print_dimensions():
+    length_delta, width_delta, height_delta = get_user_deltas()
 
-    ch = get_post_print_dimensions(params, channel_index=channel_index)
+    L = BASE_LENGTH + length_delta
+    W = BASE_WIDTH + width_delta
+    H = BASE_HEIGHT + height_delta
 
-    L = ch["length"]
-    W = ch["width"]
-    H = ch["height"]
+    if L <= 0 or W <= 0 or H <= 0:
+        raise ValueError("Post-print dimensions became non-positive!")
 
-    total_flow_length = INLET_LENGTH + L + OUTLET_LENGTH
+    return L, W, H
+
+
+def build_channel():
+    L, W, H = compute_post_print_dimensions()
+
+    total_length = INLET_LENGTH + L + OUTLET_LENGTH
 
     fluid = (
         cq.Workplane("XY")
-        .box(total_flow_length, W, H)
+        .box(total_length, W, H)
         .translate((X_SHIFT, 0.0, H / 2.0))
     )
 
-    x_min = -total_flow_length / 2.0
-    x_max = total_flow_length / 2.0
+    x_min = -total_length / 2.0
+    x_max = total_length / 2.0
 
-    # Thick enough for separate STL patch creation
     face_thickness = max(min(W, H) * 0.2, 0.05)
 
     inlet = (
@@ -89,31 +66,20 @@ def build_single_channel_parts(params: dict, channel_index: int = 1):
 
     walls = fluid.cut(inlet).cut(outlet)
 
-    return fluid, walls, inlet, outlet, ch
+    return fluid, walls, inlet, outlet, L, W, H
 
 
 if __name__ == "__main__":
-    with open("suggested_params.json", "r") as f:
-        params = json.load(f)
-
-    channel_index = 1
-
-    fluid, walls, inlet, outlet, dims = build_single_channel_parts(
-        params, channel_index=channel_index
-    )
+    fluid, walls, inlet, outlet, L, W, H = build_channel()
 
     cq.exporters.export(fluid, "channels_fluid.stl")
     cq.exporters.export(walls, "channel_walls.stl")
     cq.exporters.export(inlet, "channel_inlet.stl")
     cq.exporters.export(outlet, "channel_outlet.stl")
 
-    print("Generated:")
-    print("  channels_fluid.stl")
-    print("  channel_walls.stl")
-    print("  channel_inlet.stl")
-    print("  channel_outlet.stl")
-    print()
-    print("Post-print dimensions used:")
-    print(f"  Length = {dims['length']} mm")
-    print(f"  Width  = {dims['width']} mm")
-    print(f"  Height = {dims['height']} mm")
+    print("\nGenerated STL files successfully!")
+
+    print("\nPost-print dimensions used:")
+    print(f"Length = {L} mm")
+    print(f"Width  = {W} mm")
+    print(f"Height = {H} mm")
