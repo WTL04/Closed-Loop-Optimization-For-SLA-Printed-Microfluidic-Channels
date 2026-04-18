@@ -8,6 +8,9 @@ FoamFile
 
 surfaces
 (
+    "channel_walls.stl"
+    "channel_inlet.stl"
+    "channel_outlet.stl"
     "channels_fluid.stl"
 );
 

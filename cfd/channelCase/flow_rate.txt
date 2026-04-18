@@ -1,0 +1,2 @@
+Error during integration: 'paraview.modules.vtkRemotingServerManager.vtkSMSourceProxy' object has no attribute 'GetPointData'
+FLOW_RATE:0.0

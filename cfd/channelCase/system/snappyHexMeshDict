@@ -15,6 +15,7 @@ geometry
     channel_walls.stl
     {
         type triSurfaceMesh;
+        file "channel_walls.stl";
         name walls;
         scale 0.001;
     }
@@ -22,6 +23,7 @@ geometry
     channel_inlet.stl
     {
         type triSurfaceMesh;
+        file "channel_inlet.stl";
         name inlet;
         scale 0.001;
     }
@@ -29,6 +31,7 @@ geometry
     channel_outlet.stl
     {
         type triSurfaceMesh;
+        file "channel_outlet.stl";
         name outlet;
         scale 0.001;
     }
