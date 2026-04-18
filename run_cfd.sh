@@ -4,8 +4,10 @@ set -e
 cd cfd/channelCase
 
 blockMesh
-surfaceFeatureExtract
+surfaceFeatures
 snappyHexMesh -overwrite
+topoSet
+createPatch -overwrite
 simpleFoam
 touch case.foam
 
