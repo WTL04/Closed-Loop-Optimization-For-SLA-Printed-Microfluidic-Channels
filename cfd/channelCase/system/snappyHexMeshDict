@@ -12,11 +12,25 @@ addLayers       false;
 
 geometry
 {
-    channels_fluid.stl
+    channel_walls.stl
     {
         type triSurfaceMesh;
-        name channels;
-	scale 0.001;
+        name walls;
+        scale 0.001;
+    }
+
+    channel_inlet.stl
+    {
+        type triSurfaceMesh;
+        name inlet;
+        scale 0.001;
+    }
+
+    channel_outlet.stl
+    {
+        type triSurfaceMesh;
+        name outlet;
+        scale 0.001;
     }
 }
 
@@ -30,16 +44,46 @@ castellatedMeshControls
     features
     (
         {
-            file "channels_fluid.eMesh";
+            file "channel_walls.eMesh";
+            level 2;
+        }
+        {
+            file "channel_inlet.eMesh";
+            level 2;
+        }
+        {
+            file "channel_outlet.eMesh";
             level 2;
         }
     );
 
     refinementSurfaces
     {
-        channels
+        walls
         {
             level (2 3);
+            patchInfo
+            {
+                type wall;
+            }
+        }
+
+        inlet
+        {
+            level (2 3);
+            patchInfo
+            {
+                type patch;
+            }
+        }
+
+        outlet
+        {
+            level (2 3);
+            patchInfo
+            {
+                type patch;
+            }
         }
     }
 
@@ -50,7 +94,6 @@ castellatedMeshControls
     }
 
     locationInMesh (0 0 0.001);
-    scale 0.001;
 
     allowFreeStandingZoneFaces true;
 }

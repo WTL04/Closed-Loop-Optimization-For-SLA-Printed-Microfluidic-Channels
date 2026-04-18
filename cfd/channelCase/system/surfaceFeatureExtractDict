@@ -6,7 +6,31 @@ FoamFile
     object      surfaceFeatureExtractDict;
 }
 
-channels_fluid.stl
+channel_walls.stl
+{
+    extractionMethod    extractFromSurface;
+
+    extractFromSurfaceCoeffs
+    {
+        includedAngle   150;
+    }
+
+    writeObj            yes;
+}
+
+channel_inlet.stl
+{
+    extractionMethod    extractFromSurface;
+
+    extractFromSurfaceCoeffs
+    {
+        includedAngle   150;
+    }
+
+    writeObj            yes;
+}
+
+channel_outlet.stl
 {
     extractionMethod    extractFromSurface;
 
