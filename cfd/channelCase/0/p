@@ -7,28 +7,29 @@ FoamFile
 }
 
 dimensions      [0 2 -2 0 0 0 0];
+
 internalField   uniform 0;
 
 boundaryField
 {
-    box
+    inlet
     {
         type fixedValue;
         value uniform 10;
     }
 
-    channels
+    outlet
     {
         type fixedValue;
         value uniform 0;
     }
 
-    inlet
+    walls
     {
         type zeroGradient;
     }
 
-    outlet
+    box
     {
         type zeroGradient;
     }
