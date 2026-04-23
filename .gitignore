@@ -11,7 +11,7 @@ __pycache__/
 
 # OpenFOAM generated files
 cfd/channelCase/constant/polyMesh/
-cfd/channelCase/constant/extendedFeatureEdgeMesh
+cfd/channelCase/constant/extendedFeatureEdgeMesh/
 cfd/channelCase/[1-9]*/
 cfd/channelCase/[0-9][0-9]*/
 cfd/channelCase/postProcessing/
