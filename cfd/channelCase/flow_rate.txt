@@ -1,2 +1,2 @@
-Error during integration: 'paraview.modules.vtkRemotingServerManager.vtkSMSourceProxy' object has no attribute 'GetPointData'
+Error reading dat file: too many indices for array: array is 1-dimensional, but 2 were indexed
 FLOW_RATE:0.0

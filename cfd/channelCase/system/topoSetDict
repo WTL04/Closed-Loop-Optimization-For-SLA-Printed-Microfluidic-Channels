@@ -15,18 +15,7 @@ actions
         source patchToFace;
         sourceInfo
         {
-            name channels;
-        }
-    }
-
-    {
-        name inletFaces;
-        type faceSet;
-        action subset;
-        source boxToFace;
-        sourceInfo
-        {
-            box (-0.03 -0.005 -0.001) (-0.02 0.005 0.005);
+            name inlet;
         }
     }
 
@@ -37,18 +26,7 @@ actions
         source patchToFace;
         sourceInfo
         {
-            name channels;
-        }
-    }
-
-    {
-        name outletFaces;
-        type faceSet;
-        action subset;
-        source boxToFace;
-        sourceInfo
-        {
-            box (0.02 -0.005 -0.001) (0.03 0.005 0.005);
+            name outlet;
         }
     }
 );

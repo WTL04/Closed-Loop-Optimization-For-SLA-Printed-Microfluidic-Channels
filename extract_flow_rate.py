@@ -1,45 +1,37 @@
-from paraview.simple import *
-import sys
+from pathlib import Path
+import numpy as np
 
-# Load the foam file
-case_file = "case.foam"
-try:
-    data = OpenFOAMReader(FileName=case_file)
-    data.UpdatePipeline()
-except Exception as e:
-    print(f"Error loading foam file: {e}")
-    print("FLOW_RATE:0.0")
-    sys.exit(1)
+CASE_DIR = Path("cfd/channelCase")
+POST_DIR = CASE_DIR / "postProcessing" / "flowRatePatch(name=outlet)"
 
-# Create a slice at the outlet
-# Assuming outlet is perpendicular to X axis at the end of the channel
-bounds = data.GetDataInformation().GetBounds()
-max_x = bounds[1]
 
-slice_filter = Slice(Input=data)
-slice_filter.SliceType.Normal = [1, 0, 0]
-slice_filter.SliceType.Origin = [max_x, 0, 0]
-slice_filter.UpdatePipeline()
+def extract_flow_rate() -> float:
+    """Extract flow rate from OpenFOAM v1912 function object output."""
+    if not POST_DIR.exists():
+        print("postProcessing/flowRatePatch(name=outlet) not found")
+        return 0.0
 
-# Integrate the velocity over the slice to get the flow rate
-integrate = IntegrateVariables(Input=slice_filter)
-integrate.UpdatePipeline()
+    try:
+        latest = sorted(POST_DIR.iterdir(), key=lambda p: float(p.name))[-1]
+        dat_file = latest / "surfaceFieldValue_0.dat"
+    except (ValueError, IndexError, OSError):
+        print("No timestep directories found")
+        return 0.0
 
-# Extract the integrated value of U (velocity)
-# IntegrateVariables results in a 1-point dataset containing the integrated values
-try:
-    # Get the point data
-    point_data = integrate.GetPointData()
-    u_array = point_data.GetArray("U")
-    
-    if u_array:
-        # The integrated result is the value at the first (and only) point
-        # u_array[0] is the integrated vector [integral(Ux), integral(Uy), integral(Uz)]
-        integrated_vector = u_array[0]
-        flow_rate = integrated_vector[0]  # X-component
-        print(f"FLOW_RATE:{flow_rate}")
-    else:
-        print("FLOW_RATE:0.0")
-except Exception as e:
-    print(f"Error during integration: {e}")
-    print("FLOW_RATE:0.0")
+    if not dat_file.exists():
+        print("surfaceFieldValue_0.dat not found")
+        return 0.0
+
+    try:
+        dat = np.loadtxt(dat_file, comments="#")
+        flow_rate = float(dat[-1, 1])
+        return flow_rate
+    except Exception as e:
+        print(f"Error reading dat file: {e}")
+        return 0.0
+
+
+if __name__ == "__main__":
+    flow_rate = extract_flow_rate()
+    print(f"FLOW_RATE:{flow_rate}")
+

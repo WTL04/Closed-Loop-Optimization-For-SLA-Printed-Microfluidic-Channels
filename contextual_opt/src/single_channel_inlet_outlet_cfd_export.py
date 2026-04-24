@@ -2,7 +2,6 @@ import cadquery as cq
 import subprocess
 import os
 import sys
-from contextual_opt.src import sheets_api
 
 # Fixed nominal dimensions (mm)
 BASE_LENGTH = 40.0
@@ -13,7 +12,7 @@ BASE_HEIGHT = 0.5
 INLET_LENGTH = 5.0
 OUTLET_LENGTH = 5.0
 
-# Shift to keep geometry inside mesh
+# Shift to keep geometry inside blockMesh background mesh
 X_SHIFT = 30.0
 
 # Paths
@@ -25,43 +24,66 @@ SHEET_NAME = "Experiment Realistic Deltas"
 
 
 def compute_post_print_dimensions(length_delta, width_delta, height_delta):
-    L = BASE_LENGTH + length_delta
-    W = BASE_WIDTH + width_delta
-    H = BASE_HEIGHT + height_delta
+    """
+    Deltas are shrinkage values in micrometres (µm).
+    Actual printed dimension = nominal - shrinkage.
+    Convert µm -> mm by dividing by 1000.
+    """
+    L = BASE_LENGTH - (length_delta / 1000.0)
+    W = BASE_WIDTH - (width_delta / 1000.0)
+    H = BASE_HEIGHT - (height_delta / 1000.0)
 
     if L <= 0 or W <= 0 or H <= 0:
-        raise ValueError("Post-print dimensions became non-positive!")
-
+        raise ValueError(
+            f"Post-print dimensions became non-positive: L={L}, W={W}, H={H}. "
+            f"Check delta units — expected micrometres."
+        )
     return L, W, H
 
 
 def build_channel(length_delta, width_delta, height_delta):
     L, W, H = compute_post_print_dimensions(length_delta, width_delta, height_delta)
-
     total_length = INLET_LENGTH + L + OUTLET_LENGTH
 
-    fluid = (
-        cq.Workplane("XY").box(total_length, W, H).translate((X_SHIFT, 0.0, H / 2.0))
-    )
+    # World-space X coordinates of channel ends
+    x_start = X_SHIFT  # left end (inlet face)
+    x_end = X_SHIFT + total_length  # right end (outlet face)
+    x_mid = X_SHIFT + total_length / 2.0  # centre for box placement
+    y_mid = 0.0
+    z_mid = H / 2.0
 
-    x_min = -total_length / 2.0
-    x_max = total_length / 2.0
+    # --- Fluid volume: full enclosed rectangular prism ---
+    fluid = cq.Workplane("XY").box(total_length, W, H).translate((x_mid, y_mid, z_mid))
 
-    face_thickness = max(min(W, H) * 0.2, 0.05)
-
+    # --- Inlet: flat face at x_start (near-zero thickness for STL export) ---
+    # Uses YZ plane so the face normal points along X
     inlet = (
-        cq.Workplane("XY")
-        .box(face_thickness, W, H)
-        .translate((X_SHIFT + x_min + face_thickness / 2.0, 0.0, H / 2.0))
+        cq.Workplane("YZ")
+        .rect(W, H)
+        .extrude(0.001)  # 1 µm thickness — effectively a surface
+        .translate((x_start, y_mid, z_mid))
     )
 
+    # --- Outlet: flat face at x_end ---
     outlet = (
-        cq.Workplane("XY")
-        .box(face_thickness, W, H)
-        .translate((X_SHIFT + x_max - face_thickness / 2.0, 0.0, H / 2.0))
+        cq.Workplane("YZ")
+        .rect(W, H)
+        .extrude(0.001)
+        .translate(
+            (x_end - 0.001, y_mid, z_mid)
+        )  # offset back by thickness so it sits flush
     )
 
-    walls = fluid.cut(inlet).cut(outlet)
+    # --- Walls: fluid box surface minus the two end faces ---
+    # Select all faces except the -X face (inlet end) and +X face (outlet end)
+    # These are the 4 long faces: top, bottom, left, right
+    walls = (
+        cq.Workplane("XY")
+        .box(total_length, W, H)
+        .translate((x_mid, y_mid, z_mid))
+        .faces("not <X and not >X")  # exclude the two end faces
+        .shell(0.001)  # near-zero shell to make exportable surface
+    )
 
     return fluid, walls, inlet, outlet, L, W, H
 
@@ -73,12 +95,22 @@ def run_pipeline(length_delta, width_delta, height_delta):
 
     os.makedirs(STL_EXPORT_DIR, exist_ok=True)
 
-    cq.exporters.export(fluid, os.path.join(STL_EXPORT_DIR, "channels_fluid.stl"))
-    cq.exporters.export(walls, os.path.join(STL_EXPORT_DIR, "channel_walls.stl"))
-    cq.exporters.export(inlet, os.path.join(STL_EXPORT_DIR, "channel_inlet.stl"))
-    cq.exporters.export(outlet, os.path.join(STL_EXPORT_DIR, "channel_outlet.stl"))
+    exports = {
+        "channels_fluid.stl": fluid,
+        "channel_walls.stl": walls,
+        "channel_inlet.stl": inlet,
+        "channel_outlet.stl": outlet,
+    }
 
-    print(f"Generated STL files for L={L}, W={W}, H={H}")
+    for filename, shape in exports.items():
+        path = os.path.join(STL_EXPORT_DIR, filename)
+        cq.exporters.export(shape, path)
+        print(f"Exported {filename}")
+
+    print(f"\nChannel dimensions: L={L:.4f} mm, W={W:.4f} mm, H={H:.4f} mm")
+    print(
+        f"Total CFD length (with extensions): {INLET_LENGTH + L + OUTLET_LENGTH:.4f} mm"
+    )
 
     try:
         subprocess.run(["bash", CFD_RUN_SCRIPT], check=True)
@@ -90,29 +122,37 @@ def run_pipeline(length_delta, width_delta, height_delta):
 
 if __name__ == "__main__":
     if len(sys.argv) > 3:
-        # Run with provided deltas
         l_d = float(sys.argv[1])
         w_d = float(sys.argv[2])
         h_d = float(sys.argv[3])
     else:
-        # Fallback to sheets latest
-        print(f"No arguments provided. Fetching latest from {SHEET_NAME}...")
-        cols = {
-            "length": "channel_1_post_print_length_delta",
-            "width": "channel_1_post_print_width_delta",
-            "height": "channel_1_post_print_height_delta",
-        }
-        l_d = float(
-            sheets_api.get_latest_col_value(cols["length"], sheet_name=SHEET_NAME)
-            or 0.0
-        )
-        w_d = float(
-            sheets_api.get_latest_col_value(cols["width"], sheet_name=SHEET_NAME) or 0.0
-        )
-        h_d = float(
-            sheets_api.get_latest_col_value(cols["height"], sheet_name=SHEET_NAME)
-            or 0.0
-        )
+        try:
+            from contextual_opt.src import sheets_api
+
+            print(
+                f"No arguments provided. Fetching latest deltas from '{SHEET_NAME}'..."
+            )
+            cols = {
+                "length": "channel_1_post_print_length_delta",
+                "width": "channel_1_post_print_width_delta",
+                "height": "channel_1_post_print_height_delta",
+            }
+            l_d = float(
+                sheets_api.get_latest_col_value(cols["length"], sheet_name=SHEET_NAME)
+                or 0.0
+            )
+            w_d = float(
+                sheets_api.get_latest_col_value(cols["width"], sheet_name=SHEET_NAME)
+                or 0.0
+            )
+            h_d = float(
+                sheets_api.get_latest_col_value(cols["height"], sheet_name=SHEET_NAME)
+                or 0.0
+            )
+        except Exception as e:
+            print(f"Could not fetch from sheets: {e}. Using zero deltas.")
+            l_d, w_d, h_d = 0.0, 0.0, 0.0
 
     success = run_pipeline(l_d, w_d, h_d)
     sys.exit(0 if success else 1)
+

@@ -11,7 +11,7 @@ application     simpleFoam;
 startFrom       startTime;
 startTime       0;
 stopAt          endTime;
-endTime         1;
+endTime         15;
 deltaT          1;
 
 writeControl    timeStep;
@@ -26,3 +26,10 @@ timeFormat      general;
 timePrecision   6;
 
 runTimeModifiable true;
+
+functions
+{
+    #includeFunc flowRatePatch(name=outlet)
+}
+
+// ************************************************************************* //

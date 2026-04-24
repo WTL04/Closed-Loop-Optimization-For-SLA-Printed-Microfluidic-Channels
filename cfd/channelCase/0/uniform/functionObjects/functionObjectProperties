@@ -1,7 +1,7 @@
 /*--------------------------------*- C++ -*----------------------------------*\
 | =========                 |                                                 |
 | \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
-|  \\    /   O peration     | Version:  v1912                                 |
+|  \\    /   O peration     | Version:  1912                                  |
 |   \\  /    A nd           | Website:  www.openfoam.com                      |
 |    \\/     M anipulation  |                                                 |
 \*---------------------------------------------------------------------------*/
@@ -9,35 +9,12 @@ FoamFile
 {
     version     2.0;
     format      ascii;
-    class       featureEdgeMesh;
-    location    "constant/triSurface";
-    object      channel_inlet.eMesh;
+    class       dictionary;
+    location    "1/uniform/functionObjects";
+    object      functionObjectProperties;
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-
-// points:
-8((30 0.25 0) (30.1 -0.25 0) (30 -0.25 0) (30.1 0.25 0) (30 0.25 0.5) (30.1 0.25 0.5) (30 -0.25 0.5) (30.1 -0.25 0.5))
-
-// edges:
-
-12
-(
-(1 2)
-(2 0)
-(0 3)
-(3 1)
-(0 4)
-(4 5)
-(5 3)
-(4 6)
-(6 7)
-(7 5)
-(6 2)
-(1 7)
-)
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 
 // ************************************************************************* //

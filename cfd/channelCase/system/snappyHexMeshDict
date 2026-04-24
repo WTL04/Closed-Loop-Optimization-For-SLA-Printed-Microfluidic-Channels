@@ -39,9 +39,9 @@ geometry
 
 castellatedMeshControls
 {
-    maxLocalCells 1000000;
-    maxGlobalCells 5000000;
-    minRefinementCells 0;
+    maxLocalCells 1500000;
+    maxGlobalCells 3000000;
+    minRefinementCells 50;
     nCellsBetweenLevels 2;
 
     features
@@ -103,13 +103,13 @@ castellatedMeshControls
 
 snapControls
 {
-    nSmoothPatch 5;
-    tolerance 1.0;
-    nSolveIter 50;
+    nSmoothPatch 8;
+    tolerance 0.8;
+    nSolveIter 75;
     nRelaxIter 8;
 
-    nFeatureSnapIter 15;
-    implicitFeatureSnap false;
+    nFeatureSnapIter 30;
+    implicitFeatureSnap true;
     explicitFeatureSnap true;
 }
 
@@ -119,20 +119,20 @@ addLayersControls
 
 meshQualityControls
 {
-    maxNonOrtho 65;
-    maxBoundarySkewness 20;
-    maxInternalSkewness 4;
-    maxConcave 80;
-    minVol 1e-13;
-    minTetQuality 1e-9;
+    maxNonOrtho 40;
+    maxBoundarySkewness 15;
+    maxInternalSkewness 3;
+    maxConcave 60;
+    minVol 1e-12;
+    minTetQuality 1e-08;
     minArea -1;
     minTwist 0.02;
-    minDeterminant 0.001;
+    minDeterminant 0.005;
     minFaceWeight 0.02;
     minVolRatio 0.01;
     minTriangleTwist -1;
     nSmoothScale 4;
-    errorReduction 0.75;
+    errorReduction 0.6;
 }
 
 mergeTolerance 1e-6;
