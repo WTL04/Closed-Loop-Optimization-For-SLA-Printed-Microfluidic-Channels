@@ -13,10 +13,17 @@ xgboost
 scikit-learn
 
 # adaptive development platform dependancies
-git+https://github.com/cornellius-gp/gpytorch.git
-git+https://github.com/pytorch/botorch.git
-git+https://github.com/facebook/Ax.git#egg=ax-platform
-sqlalchemy
+
+# commented out edge version of Ax for testing
+# git+https://github.com/cornellius-gp/gpytorch.git
+# git+https://github.com/pytorch/botorch.git
+# git+https://github.com/facebook/Ax.git#egg=ax-platform
+# sqlalchemy
+
+# official pypi python packages
+gpytorch
+botorch
+ax-platform
 
 # bayes opt
 bayesian-optimization

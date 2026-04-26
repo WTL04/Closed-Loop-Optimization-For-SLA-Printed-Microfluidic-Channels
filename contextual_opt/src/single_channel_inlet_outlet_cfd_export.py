@@ -1,5 +1,5 @@
 import cadquery as cq
-import subprocess
+from cadquery import Face, Compound
 import os
 import sys
 
@@ -13,21 +13,20 @@ INLET_LENGTH = 5.0
 OUTLET_LENGTH = 5.0
 
 # Shift to keep geometry inside blockMesh background mesh
-X_SHIFT = 30.0
+X_SHIFT = 0.0
 
 # Paths
-STL_EXPORT_DIR = "/home/will/Downloads/coding/uni/ml-research/contextual_bayes_opt/cfd/channelCase/constant/triSurface/"
-CFD_RUN_SCRIPT = (
-    "/home/will/Downloads/coding/uni/ml-research/contextual_bayes_opt/run_cfd.sh"
-)
+STL_EXPORT_DIR = "cfd/channelCase/constant/triSurface/"
+CFD_RUN_SCRIPT = "run_cfd.sh"
+
 SHEET_NAME = "Experiment Realistic Deltas"
 
 
 def compute_post_print_dimensions(length_delta, width_delta, height_delta):
     """
-    Deltas are shrinkage values in micrometres (µm).
+    Deltas are shrinkage values in micrometres (um).
     Actual printed dimension = nominal - shrinkage.
-    Convert µm -> mm by dividing by 1000.
+    Convert um -> mm by dividing by 1000.
     """
     L = BASE_LENGTH - (length_delta / 1000.0)
     W = BASE_WIDTH - (width_delta / 1000.0)
@@ -36,7 +35,7 @@ def compute_post_print_dimensions(length_delta, width_delta, height_delta):
     if L <= 0 or W <= 0 or H <= 0:
         raise ValueError(
             f"Post-print dimensions became non-positive: L={L}, W={W}, H={H}. "
-            f"Check delta units — expected micrometres."
+            f"Check delta units -- expected micrometres."
         )
     return L, W, H
 
@@ -60,7 +59,7 @@ def build_channel(length_delta, width_delta, height_delta):
     inlet = (
         cq.Workplane("YZ")
         .rect(W, H)
-        .extrude(0.001)  # 1 µm thickness — effectively a surface
+        .extrude(0.001)  # 1 um thickness -- effectively a surface
         .translate((x_start, y_mid, z_mid))
     )
 
@@ -69,21 +68,32 @@ def build_channel(length_delta, width_delta, height_delta):
         cq.Workplane("YZ")
         .rect(W, H)
         .extrude(0.001)
-        .translate(
-            (x_end - 0.001, y_mid, z_mid)
-        )  # offset back by thickness so it sits flush
+        .translate((x_end - 0.001, y_mid, z_mid))
     )
 
-    # --- Walls: fluid box surface minus the two end faces ---
-    # Select all faces except the -X face (inlet end) and +X face (outlet end)
-    # These are the 4 long faces: top, bottom, left, right
-    walls = (
-        cq.Workplane("XY")
-        .box(total_length, W, H)
-        .translate((x_mid, y_mid, z_mid))
-        .faces("not <X and not >X")  # exclude the two end faces
-        .shell(0.001)  # near-zero shell to make exportable surface
+    # --- Walls: 4 long faces only (top, bottom, left, right) ---
+    # Get all faces from the box solid, filter out the two X-axis end faces
+    # by checking the face normal vector's X component.
+    # End faces have normal.x == +/-1.0, wall faces have normal.x == 0.0
+    wall_box = (
+        cq.Workplane("XY").box(total_length, W, H).translate((x_mid, y_mid, z_mid))
     )
+
+    # .vals() returns the underlying OCCT Face objects
+    # Face.normalAt() returns a Vector -- access .x directly
+    wall_faces: list[Face] = [
+        f
+        for f in wall_box.faces().vals()
+        if isinstance(f, Face) and abs(f.normalAt(f.Center()).x) < 0.99
+    ]
+
+    if len(wall_faces) != 4:
+        raise RuntimeError(
+            f"Expected 4 wall faces, got {len(wall_faces)}. "
+            f"Check geometry -- box may be degenerate."
+        )
+
+    walls = Compound.makeCompound(wall_faces)
 
     return fluid, walls, inlet, outlet, L, W, H
 
@@ -111,13 +121,6 @@ def run_pipeline(length_delta, width_delta, height_delta):
     print(
         f"Total CFD length (with extensions): {INLET_LENGTH + L + OUTLET_LENGTH:.4f} mm"
     )
-
-    try:
-        subprocess.run(["bash", CFD_RUN_SCRIPT], check=True)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"CFD simulation failed: {e}")
-        return False
 
 
 if __name__ == "__main__":
@@ -153,6 +156,4 @@ if __name__ == "__main__":
             print(f"Could not fetch from sheets: {e}. Using zero deltas.")
             l_d, w_d, h_d = 0.0, 0.0, 0.0
 
-    success = run_pipeline(l_d, w_d, h_d)
-    sys.exit(0 if success else 1)
-
+    run_pipeline(l_d, w_d, h_d)

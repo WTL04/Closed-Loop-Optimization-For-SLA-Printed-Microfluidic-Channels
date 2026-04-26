@@ -1,33 +1,89 @@
 #!/bin/bash
 set -e
 
-CASE_DIR="/home/will/Downloads/coding/uni/ml-research/contextual_bayes_opt/cfd/channelCase"
-IMAGE="openfoamplus/of_v1912_centos73"
+IMAGE_NAME="unified-cfd-env"
+REPO_ROOT="$(pwd)"
 
-echo "Pulling OpenFOAM Docker image..."
-docker pull $IMAGE
+# ---------------------------------------------------------------------------
+# Parse delta arguments
+# Usage: ./run_cfd.sh <length_delta> <width_delta> <height_delta>
+# Deltas are shrinkage values in micrometres (um)
+# If not provided, export.py falls back to fetching latest from Google Sheets
+# ---------------------------------------------------------------------------
+LENGTH_DELTA="${1:-}"
+WIDTH_DELTA="${2:-}"
+HEIGHT_DELTA="${3:-}"
 
-echo "Running CFD pipeline in Docker..."
+# Build the Docker image if it does not exist
+# NOTE: if you change Dockerfile or req.txt, run: docker rmi unified-cfd-env
+#       to force a rebuild on next run
+if [[ "$(docker images -q $IMAGE_NAME 2>/dev/null)" == "" ]]; then
+  echo "Building Docker image '$IMAGE_NAME'..."
+  docker build -t $IMAGE_NAME .
+fi
+
+# ---------------------------------------------------------------------------
+# Write the inner pipeline script to a temp file in the repo root
+# This avoids passing a long inline string to docker run, which breaks
+# source commands and makes set -e behave unpredictably
+# ---------------------------------------------------------------------------
+INNER_SCRIPT="$REPO_ROOT/.pipeline_inner.sh"
+
+cat >"$INNER_SCRIPT" <<INNEREOF
+#!/bin/bash
+set -e
+
+# ---------------------------------------------------------------
+# 1. CAD Generation
+# ---------------------------------------------------------------
+echo '--- Step 1: CAD Generation ---'
+cd /case
+
+if [ -n "${LENGTH_DELTA}" ] && [ -n "${WIDTH_DELTA}" ] && [ -n "${HEIGHT_DELTA}" ]; then
+    python contextual_opt/src/single_channel_inlet_outlet_cfd_export.py \
+        ${LENGTH_DELTA} ${WIDTH_DELTA} ${HEIGHT_DELTA}
+else
+    python contextual_opt/src/single_channel_inlet_outlet_cfd_export.py
+fi
+
+# ---------------------------------------------------------------
+# 2. OpenFOAM Execution
+# ---------------------------------------------------------------
+echo '--- Step 2: OpenFOAM ---'
+set +e
+source /usr/lib/openfoam/openfoam1912/etc/bashrc
+set -e
+
+cd /case/cfd/channelCase
+
+rm -rf constant/polyMesh
+blockMesh
+surfaceFeatureExtract
+snappyHexMesh -overwrite
+checkMesh
+simpleFoam
+
+# ---------------------------------------------------------------
+# 3. Flow Rate Extraction
+# ---------------------------------------------------------------
+echo '--- Step 3: Extract Flow Rate ---'
+cd /case
+python extract_flow_rate.py > cfd/channelCase/flow_rate.txt
+INNEREOF
+
+chmod +x "$INNER_SCRIPT"
+
+echo "Starting Unified Pipeline..."
+echo "Repo root: $REPO_ROOT"
+
 docker run --rm \
-  -v "$CASE_DIR:/case" \
-  -w /case \
-  $IMAGE \
-  bash -c "
-        source /opt/OpenFOAM/OpenFOAM-v1912/etc/bashrc
-        rm -rf constant/polyMesh 1>/dev/null 2>&1 || true
-        blockMesh
-        surfaceFeatureExtract
-        snappyHexMesh -overwrite
-        topoSet
-        createPatch -overwrite
-        simpleFoam
-        touch case.foam
-    "
+  --entrypoint bash \
+  -v "$REPO_ROOT:/case" \
+  $IMAGE_NAME \
+  /case/.pipeline_inner.sh
 
-echo "Running flow rate extraction..."
-cd /home/will/Downloads/coding/uni/ml-research/contextual_bayes_opt
-python extract_flow_rate.py >"$CASE_DIR/flow_rate.txt"
+# Clean up inner script after run
+rm -f "$INNER_SCRIPT"
 
-echo "CFD run complete."
-echo "Flow rate: $(cat "$CASE_DIR/flow_rate.txt")"
-
+echo "Pipeline Finished."
+echo "Calculated Flow Rate: $(cat cfd/channelCase/flow_rate.txt)"

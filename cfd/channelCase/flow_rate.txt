@@ -1,2 +1,1 @@
-Error reading dat file: too many indices for array: array is 1-dimensional, but 2 were indexed
-FLOW_RATE:0.0
+FLOW_RATE:-1.002241e-05

@@ -11,7 +11,7 @@ pointSync false;
 patches
 (
     {
-        name inlet;
+        name channel_inlet;
         patchInfo
         {
             type patch;
@@ -21,7 +21,7 @@ patches
     }
 
     {
-        name outlet;
+        name channel_outlet;
         patchInfo
         {
             type patch;
