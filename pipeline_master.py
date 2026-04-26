@@ -1,70 +1,92 @@
-import os
 import subprocess
+import os
+import numpy as np
 import pandas as pd
+
+# Import your existing API script
 from contextual_opt.src import sheets_api
-from contextual_opt.src.single_channel_inlet_outlet_cfd_export import run_pipeline
 
 # Configuration
-SHEET_NAME = "Experiment Realistic Deltas"
-FLOW_RATE_FILE = "/home/will/Downloads/coding/uni/ml-research/contextual_bayes_opt/cfd/channelCase/flow_rate.txt"
-# Note: run_cfd.sh might output flow_rate.txt in cfd/channelCase
-# Let's make sure we know the exact path.
+SHEET_NAME = "Experiment Random Deltas"
+FLOW_RATE_FILE = "cfd/channelCase/flow_rate.txt"
+CONVERSION_FACTOR = 1e6 * 60  # OpenFOAM m^3/s to mL/min
 
-def extract_flow_rate_from_file():
-    if not os.path.exists(FLOW_RATE_FILE):
-        return None
-    with open(FLOW_RATE_FILE, "r") as f:
-        for line in f:
-            if "FLOW_RATE:" in line:
-                return float(line.split(":")[1].strip())
-    return None
 
-def main():
-    print(f"Starting master pipeline for sheet: {SHEET_NAME}")
+def run_full_automation():
+    print(f"Fetching data from Google Sheets: {SHEET_NAME}...")
+
+    # pull full sheet, return as Pandas DataFrame
     df = sheets_api.pullData(sheet_name=SHEET_NAME, verbose=False)
-    
-    # Identify the columns for the first channel to iterate over
-    # We assume we want to run for all rows that have deltas
-    # For simplicity, we'll iterate over all rows in the sheet
-    
-    for index, row in df.iterrows():
-        batch_id = row.get("batch_id")
-        if batch_id is None:
-            continue
-            
-        print(f"\nProcessing Batch ID: {batch_id}")
-        
-        try:
-            l_d = float(row.get("channel_1_post_print_length_delta", 0.0))
-            w_d = float(row.get("channel_1_post_print_width_delta", 0.0))
-            h_d = float(row.get("channel_1_post_print_height_delta", 0.0))
-            
-            print(f"Deltas: L={l_d}, W={w_d}, H={h_d}")
-            
-            # 1 & 2: Export STL and Run Simulation
-            success = run_pipeline(l_d, w_d, h_d)
-            
-            if success:
-                # 3: Extract flow rate
-                flow_rate = extract_flow_rate_from_file()
-                if flow_rate is not None:
-                    print(f"Measured Flow Rate: {flow_rate}")
-                    # 4: Update Sheet
-                    sheets_api.update_row(
-                        batch_id=int(batch_id),
-                        updates={"flow_rate": flow_rate},
-                        sheet_name=SHEET_NAME
-                    )
-                    print(f"Updated sheet for batch {batch_id}")
-                else:
-                    print("Could not find flow rate in output file.")
-            else:
-                print(f"Simulation failed for batch {batch_id}")
-                
-        except Exception as e:
-            print(f"Error processing batch {batch_id}: {e}")
 
-    print("\nAll iterations complete.")
+    for index, row in df.iterrows():
+        batch_id = row["batch_id"]
+        print(f"\n========================================")
+        print(f"Processing Batch {batch_id}")
+        print(f"========================================")
+
+        flow_rates = []
+        updates = {}
+
+        for ch in range(1, 5):
+            # Extract deltas. If the sheet is empty (NaN), default to 0.0 for nominal geometry
+            l_delta = row.get(f"channel_{ch}_post_print_length_delta")
+            w_delta = row.get(f"channel_{ch}_post_print_width_delta")
+            h_delta = row.get(f"channel_{ch}_post_print_height_delta")
+
+            l_delta = 0.0 if pd.isna(l_delta) or l_delta == "" else float(l_delta)
+            w_delta = 0.0 if pd.isna(w_delta) or w_delta == "" else float(w_delta)
+            h_delta = 0.0 if pd.isna(h_delta) or h_delta == "" else float(h_delta)
+
+            print(
+                f"  [Channel {ch}] Deltas (um): L={l_delta}, W={w_delta}, H={h_delta}"
+            )
+
+            # Execute OpenFOAM pipeline
+            result = subprocess.run(
+                ["./run_cfd.sh", str(l_delta), str(w_delta), str(h_delta)],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                print(f"  [!] CFD Failed for Channel {ch}. Check logs.")
+                continue
+
+            # Extract flow rate via flow_rate.txt, convert cubic meters per second to millileter per minute
+            try:
+                with open(FLOW_RATE_FILE, "r") as f:
+                    content = f.read().strip()
+                    if "FLOW_RATE:" in content:
+                        raw_val_m3s = float(content.split("FLOW_RATE:")[1])
+                        val_ml_min = raw_val_m3s * CONVERSION_FACTOR
+
+                        flow_rates.append(val_ml_min)
+                        updates[f"channel_{ch}_flow_rate_ml_per_min"] = val_ml_min
+                        print(f"  -> Success: {val_ml_min:.6f} mL/min")
+                    else:
+                        print(f"  [!] Unrecognized output in flow_rate.txt")
+            except FileNotFoundError:
+                print(f"  [!] Error: {FLOW_RATE_FILE} missing.")
+
+        # Calculate Coefficient of Variation (CV) across the 4 channels
+        if len(flow_rates) > 1:
+            mean_fr = np.mean(flow_rates)
+            if mean_fr != 0:
+                cv = np.std(flow_rates) / mean_fr
+                updates["flow_rate_cv"] = cv
+                print(f"  -> Batch CV Calculated: {cv:.4f}")
+
+        # Push the row's simulation results to Google Sheets
+        if updates:
+            print(f"  Pushing updates to Google Sheets for Batch {batch_id}...")
+            try:
+                sheets_api.update_row(
+                    batch_id=batch_id, updates=updates, sheet_name=SHEET_NAME
+                )
+                print(f"  -> Update confirmed.")
+            except Exception as e:
+                print(f"  [!] Google Sheets update failed: {e}")
+
 
 if __name__ == "__main__":
-    main()
+    run_full_automation()
