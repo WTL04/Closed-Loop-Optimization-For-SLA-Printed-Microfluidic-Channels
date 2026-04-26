@@ -35,6 +35,14 @@ geometry
         name outlet;
         scale 0.001;
     }
+
+    channel_fluid.stl
+    {
+      type triSurfaceMesh;
+      file "channels_fluid.stl";
+      name fluid_core;
+      scale 0.001;
+    }
 }
 
 castellatedMeshControls
@@ -94,9 +102,16 @@ castellatedMeshControls
 
     refinementRegions
     {
+      fluid_core
+      {
+          mode inside;
+          levels ((1e15 2)); // Applies level 2 refinement to all cells inside
+      }
     }
 
-    locationInMesh (0 0 0.001);
+
+    // Moving location in mesh, deep into absolute center of fluid volume
+    locationInMesh (0.025 0 0.00025);
 
     allowFreeStandingZoneFaces true;
 }

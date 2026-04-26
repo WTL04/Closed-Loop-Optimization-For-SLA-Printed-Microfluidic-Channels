@@ -1,5 +1,4 @@
 from pathlib import Path
-import numpy as np
 
 CASE_DIR = Path("cfd/channelCase")
 POST_DIR = CASE_DIR / "postProcessing" / "flowRatePatch(name=outlet)"
@@ -23,9 +22,27 @@ def extract_flow_rate() -> float:
         return 0.0
 
     try:
-        dat = np.loadtxt(dat_file, comments="#")
-        flow_rate = float(dat[-1, 1])
-        return flow_rate
+        with open(dat_file, "r") as f:
+            # Filter out empty lines and comment lines
+            valid_lines = [
+                line.strip() for line in f if line.strip() and not line.startswith("#")
+            ]
+
+        if not valid_lines:
+            print("Dat file contains no valid data.")
+            return 0.0
+
+        # The last line should contain [Time, FlowRate]
+        last_line_data = valid_lines[-1].split()
+
+        # Ensure the line actually has at least two columns before extracting
+        if len(last_line_data) >= 2:
+            flow_rate = float(last_line_data[1])
+            return flow_rate
+        else:
+            print("Last line was incomplete.")
+            return 0.0
+
     except Exception as e:
         print(f"Error reading dat file: {e}")
         return 0.0
@@ -34,4 +51,3 @@ def extract_flow_rate() -> float:
 if __name__ == "__main__":
     flow_rate = extract_flow_rate()
     print(f"FLOW_RATE:{flow_rate}")
-
