@@ -1,9 +1,0 @@
---2026-03-08 20:57:34--  https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-Loaded CA certificate '/etc/ssl/certs/ca-certificates.crt'
-Resolving repo.anaconda.com (repo.anaconda.com)... 104.16.32.241, 104.16.191.158, 2606:4700::6810:20f1, ...
-Connecting to repo.anaconda.com (repo.anaconda.com)|104.16.32.241|:443... connected.
-HTTP request sent, awaiting response... 200 OK
-Length: 162067098 (155M) [application/octet-stream]
-Saving to: ‘Miniconda3-latest-Linux-x86_64.sh’
-
-Miniconda3-latest-Linux-x86_   4%[=>                                           ]   7.01M  6.34KB/s    eta 74m 43sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.01M  6.13KB/s    eta 75m 0s Miniconda3-latest-Linux-x86_   4%[=>                                           ]   7.03M  6.51KB/s    eta 75m 0s Miniconda3-latest-Linux-x86_   4%[=>                                           ]   7.03M  6.31KB/s    eta 75m 26sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.04M  6.75KB/s    eta 75m 26sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.06M  7.09KB/s    eta 75m 30sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.07M  7.44KB/s    eta 75m 30sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.09M  7.78KB/s    eta 75m 36sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.10M  8.05KB/s    eta 75m 36sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.12M  8.33KB/s    eta 75m 49sMiniconda3-latest-Linux-x86_   4%[=>                                           ]   7.14M  8.74KB/s    eta 75m 49s

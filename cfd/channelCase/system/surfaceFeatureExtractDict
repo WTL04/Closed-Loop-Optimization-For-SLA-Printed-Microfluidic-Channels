@@ -1,0 +1,43 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      surfaceFeatureExtractDict;
+}
+
+channel_walls.stl
+{
+    extractionMethod    extractFromSurface;
+
+    extractFromSurfaceCoeffs
+    {
+        includedAngle   150;
+    }
+
+    writeObj            yes;
+}
+
+channel_inlet.stl
+{
+    extractionMethod    extractFromSurface;
+
+    extractFromSurfaceCoeffs
+    {
+        includedAngle   150;
+    }
+
+    writeObj            yes;
+}
+
+channel_outlet.stl
+{
+    extractionMethod    extractFromSurface;
+
+    extractFromSurfaceCoeffs
+    {
+        includedAngle   150;
+    }
+
+    writeObj            yes;
+}

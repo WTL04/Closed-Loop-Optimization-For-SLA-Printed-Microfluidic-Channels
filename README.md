@@ -1,282 +1,70 @@
-# CAD to CFD Pipeline (OpenFOAM + ParaView)
+# Automated CAD to CFD Pipeline
 
 ## Overview
 
-This guide explains how to:
-
-* Install WSL + Ubuntu
-* Install OpenFOAM
-* Run CFD simulation
-* Visualize results in ParaView
-* Extract flow rate
+This guide explains how to set up the Python environment and execute the automated OpenFOAM CFD pipeline for microfluidic channel optimization.
 
 This assumes:
-
-* You have cloned this repository
-* The `cfd/channelCase` folder already exists with all required files
+* You have cloned this repository.
+* Docker is installed and running on your system (required for containerized OpenFOAM execution).
 
 ---
 
-# 1. Install WSL + Ubuntu (Windows)
+# 1. Environment Setup
 
-Open **PowerShell as Administrator**:
+Set up a virtual environment to install the required Python dependencies (including `pandas`, `gspread`, and CadQuery libraries). You can use either standard Python `venv` or `conda`.
 
-```powershell
-wsl --install
+**Option A: Using venv**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r req.txt
 ```
 
-Restart PC if prompted.
-
-After restart:
-
-* Open **Ubuntu**
-* Create username + password
-
-Check installation:
-
-```powershell
-wsl --list --verbose
+**Option B: Using Conda**
+```bash
+conda create -n cfd_env python=3.11 -y
+conda activate cfd_env
+pip install -r req.txt
 ```
 
 ---
 
-# 2. Open Ubuntu and install dependencies
+# 2. Run a Single Channel Test
+
+To test the CFD pipeline on a single geometry configuration, execute the bash execution script. This script automatically handles CAD generation, meshing, solving, and flow rate extraction.
+
+**Test with specific dimensional deltas (in micrometers):**
+Pass the length, width, and height deltas as positional arguments.
+```bash
+./run_cfd.sh <length_delta> <width_delta> <height_delta>
+```
+*Example:* `./run_cfd.sh 10.0 5.0 -2.5`
+
+**Test the nominal geometry (0 delta):**
+If no parameters are provided, the script defaults to simulating the base channel dimensions.
+```bash
+./run_cfd.sh
+```
+
+Upon completion, the extracted flow rate will be saved to `cfd/channelCase/flow_rate.txt` and printed directly to the terminal.
+
+---
+
+# 3. Full Dataset Automation
+
+To process an entire experimental batch and sync the computational results with your database, run the master controller:
 
 ```bash
-sudo apt update
-sudo apt upgrade -y
-sudo apt install -y nano git wget curl unzip software-properties-common
+python pipeline_master.py
 ```
 
----
-
-# 3. Install OpenFOAM
-
-```bash
-sudo apt install -y openfoam
-```
-
-Verify installation:
-
-```bash
-which blockMesh
-which snappyHexMesh
-which simpleFoam
-```
-
----
-
-# 4. Fix OpenFOAM environment (IMPORTANT)
-
-If commands fail, run:
-
-```bash
-export WM_PROJECT=OpenFOAM
-export WM_PROJECT_DIR=/usr/share/openfoam
-export FOAM_ETC=/usr/share/openfoam/etc
-```
-
-Make it permanent:
-
-```bash
-echo 'export WM_PROJECT=OpenFOAM' >> ~/.bashrc
-echo 'export WM_PROJECT_DIR=/usr/share/openfoam' >> ~/.bashrc
-echo 'export FOAM_ETC=/usr/share/openfoam/etc' >> ~/.bashrc
-source ~/.bashrc
-```
-
----
-
-# 5. Install ParaView 
-
-sudo apt install -y paraview
-
----
-
-# 6. Navigate to your CFD case
-
-Clone or open your repo, then:
-
-In Ubuntu:
-
-cd <your-repo-name>
-
-Your repo structure should look like:
-
-<repo-root>/
-├── ax/
-│   └── src/
-├── cfd/
-│   └── channelCase/
-
----
-# 7. Ensure STL is present
-
-```bash
-mkdir -p constant/triSurface
-ls constant/triSurface
-```
-
-You should see:
-
-```text
-channels_fluid.stl
-```
-
----
-
-# 8. Build mesh
-
-```bash
-rm -rf constant/polyMesh
-blockMesh
-surfaceFeatureExtract
-snappyHexMesh -overwrite
-checkMesh
-```
-
----
-
-# 9. Run simulation
-
-```bash
-simpleFoam
-```
-
----
-
-# 10. Create ParaView file
-
-```bash
-touch case.foam
-paraview
-```
-
----
-
-# 11. In ParaView
-
-1. File → Open → select `case.foam`
-3. Click **Apply**
-
----
-
-# 12. Visualize flow
-
-In ParaView:
-
-* Set:
-
-```text
-Coloring → U → Magnitude
-Representation → Surface
-```
-
----
-
-# 13. Extract flow rate (IMPORTANT)
-
-## Step 1 — Create slice
-
-```text
-Filters → Slice → Apply
-```
-
-## Step 2 — Set slice
-
-```text
-Normal = (1, 0, 0)
-Origin = (0.004, 0.0001, 0.0006)
-```
-
-Adjust ONLY `Origin X` slightly if needed.
-
----
-
-## Step 3 — Integrate
-
-```text
-Filters → Integrate Variables → Apply
-```
-
----
-
-## Step 4 — Read result
-
-```text
-View → Spreadsheet View
-```
-
-Look at:
-
-```text
-U = (Ux, Uy, Uz)
-```
-
-👉 Flow rate = **Ux**
-
----
-
-# 14. IMPORTANT RULES
-
-* Always run commands from:
-
-```bash
-cfd/channelCase
-```
-
-* After re-running simulation:
-
-```text
-DELETE old Slice + Integrate
-CREATE new ones
-```
----
-
-# 15. Full command sequence (quick run)
-
-```bash
-cd /mnt/c/.../cfd/channelCase
-
-rm -rf constant/polyMesh
-blockMesh
-surfaceFeatureExtract
-snappyHexMesh -overwrite
-checkMesh
-simpleFoam
-touch case.foam
-paraview
-```
-
-Then open `case.foam` in ParaView.
-
----
-
-# 16. Final workflow
-
-```text
-Run CFD → Open ParaView → Slice → Integrate → Read Ux
-```
-
----
-
-# Done
-
-You now have:
-
-* Working CFD simulation
-* Correct slicing
-* Flow rate extraction
-
----
-
-If anything breaks, rerun:
-
-```bash
-rm -rf constant/polyMesh
-blockMesh
-snappyHexMesh -overwrite
-simpleFoam
-```
-
----
+**What this does:**
+1. Asks user which page in sheets to read/write into.
+2. Fetches pending experimental parameters from the connected Google Sheet.
+3. Iterates through all channels in each batch, applying the specific post-print dimensional deltas.
+4. Triggers `./run_cfd.sh` to simulate each configuration.
+5. Automatically writes the calculated `mL/min` flow rates and the Batch Coefficient of Variation (CV) back into the respective cells in the Google Sheet.
+
+
+*Troubleshooting:* If a specific channel fails during the automated loop, check the terminal output for `checkMesh` errors (output from openFOAM). Failures here typically indicate that the CBO or dataset provided a physically impossible dimensional delta (e.g., negative cell volumes due to a geometry that exceeds the bounding box). The pipeline will safely log this failure and continue to the next channel.
