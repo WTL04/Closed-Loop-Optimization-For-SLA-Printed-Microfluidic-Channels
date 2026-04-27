@@ -13,10 +13,16 @@ CONVERSION_FACTOR = 1e6 * 60  # OpenFOAM m^3/s to mL/min
 
 
 def run_full_automation():
-    print(f"Fetching data from Google Sheets: {SHEET_NAME}...")
+    SHEET_NAME = input("Input sheet name: ")
 
     # pull full sheet, return as Pandas DataFrame
     df = sheets_api.pullData(sheet_name=SHEET_NAME, verbose=False)
+
+    if df is None:
+        print("Sheet not found, please input valid sheet name")
+        return
+
+    print(f"Fetching data from Google Sheets: {SHEET_NAME}...")
 
     for index, row in df.iterrows():
         batch_id = row["batch_id"]
