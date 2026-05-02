@@ -2,7 +2,7 @@ import pandas as pd
 from typing import Optional
 
 from torch import ge
-from lab_runner import LabRunner
+from .lab_runner import LabRunner
 
 from ax.core import (
     SearchSpace,

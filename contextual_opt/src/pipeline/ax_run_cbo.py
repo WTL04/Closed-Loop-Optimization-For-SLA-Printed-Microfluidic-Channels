@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import cadquery as cq
 
-from config import (
+from .config import (
     NUM_CHANNELS,
     CHANNEL_LENGTH_BOUNDS,
     CHANNEL_WIDTH_BOUNDS,
@@ -16,7 +16,7 @@ from config import (
     BASE_LENGTH,
     BASE_THICKNESS,
 )
-from ax_cbo import ContextualBayesOptAx
+from ..core.ax_cbo import ContextualBayesOptAx
 from ax.core import (
     SearchSpace,
     RangeParameter,
@@ -24,7 +24,7 @@ from ax.core import (
     ParameterType,
 )
 from ax.core.parameter_constraint import ParameterConstraint
-from sheets_api import pullData, get_latest_col_value, append_row, update_row
+from ..api.sheets_api import pullData, get_latest_col_value, append_row
 
 
 def build_search_space(num_channels: int = NUM_CHANNELS):
