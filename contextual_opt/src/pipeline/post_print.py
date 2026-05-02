@@ -1,7 +1,8 @@
 import json
 import numpy as np
+from pathlib import Path
 
-from sheets_api import update_row
+from contextual_opt.src.api.sheets_api import update_row
 
 NUM_CHANNELS = 4
 
@@ -13,8 +14,17 @@ def compute_flow_rate_cv(flow_values: list) -> float:
 
 
 def load_params_from_json(filename: str = "suggested_params.json") -> dict:
-    with open(filename, "r") as f:
-        return json.load(f)
+    # Look in contextual_opt/src/data/, fallback to current directory
+    search_dirs = [
+        Path(__file__).parent.parent / "data",
+        Path.cwd(),
+    ]
+    for search_dir in search_dirs:
+        filepath = search_dir / filename
+        if filepath.exists():
+            with open(filepath, "r") as f:
+                return json.load(f)
+    raise FileNotFoundError(f"Could not find {filename} in {search_dirs}")
 
 
 if __name__ == "__main__":

@@ -31,7 +31,6 @@ nbformat
 ipython
 ipykernel 
 kaleido
-botorch
 
 # auth 
 msal 

@@ -1,12 +1,10 @@
-"""ax/run_cbo.py"""
-
 import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import cadquery as cq
 
-from config import (
+from contextual_opt.src.pipeline.config import (
     NUM_CHANNELS,
     CHANNEL_LENGTH_BOUNDS,
     CHANNEL_WIDTH_BOUNDS,
@@ -16,7 +14,7 @@ from config import (
     BASE_LENGTH,
     BASE_THICKNESS,
 )
-from ax_cbo import ContextualBayesOptAx
+from contextual_opt.src.core.ax_cbo import ContextualBayesOptAx
 from ax.core import (
     SearchSpace,
     RangeParameter,
@@ -24,7 +22,7 @@ from ax.core import (
     ParameterType,
 )
 from ax.core.parameter_constraint import ParameterConstraint
-from sheets_api import pullData, get_latest_col_value, append_row, update_row
+from contextual_opt.src.api.sheets_api import pullData, get_latest_col_value, append_row
 
 
 def build_search_space(num_channels: int = NUM_CHANNELS):
@@ -193,28 +191,36 @@ def compute_flow_rate_cv(flow_rates: list[float]) -> float:
     return float(np.std(arr) / mean)
 
 
-def load_dataset(is_testing: bool, verbose=True):
+def load_dataset(
+    is_testing: bool, sheet_name: str = "Experiment Random Deltas", verbose=True
+):
     """
     Returns DataFrame from Google Spreadsheet or a chosen fake dataset.
 
     Args:
         is_testing: bool
             Uses fake dataset when True, Google Spreadsheet when False
+        sheet_name: str
+            Name of the Google Sheets tab to load from (default: "Experiment Random Deltas")
     """
     if is_testing:
         print(
-            "\n1) dataset_30_batches.csv \n2) dataset_5_batches.csv \n3) dataset_10_batches.csv \n4) dataset_15_batches.csv"
+            "\n1) dataset_30_batches.csv \n2) dataset_5_batches.csv \n3) dataset_10_batches.csv \n4) dataset_15_batches.csv \n5) experiment_realistic_deltas.csv \n6) experiment_random_deltas.csv"
         )
-        choice = input("\nPlease choose one of the four: ")
+        choice = input("\nPlease choose one of the six: ")
 
         if choice == "1":
-            path = "../../datasets/dataset_30_batches.csv"
+            path = "contextual_opt/datasets/dataset_30_batches.csv"
         elif choice == "2":
-            path = "../../datasets/dataset_5_batches.csv"
+            path = "contextual_opt/datasets/dataset_5_batches.csv"
         elif choice == "3":
-            path = "../../datasets/dataset_10_batches.csv"
+            path = "contextual_opt/datasets/dataset_10_batches.csv"
         elif choice == "4":
-            path = "../../datasets/dataset_15_batches.csv"
+            path = "contextual_opt/datasets/dataset_15_batches.csv"
+        elif choice == "5":
+            path = "contextual_opt/datasets/experiment_realistic_deltas.csv"
+        elif choice == "6":
+            path = "contextual_opt/datasets/experiment_random_deltas.csv"
         else:
             raise ValueError("Invalid fake dataset option")
 
@@ -223,7 +229,7 @@ def load_dataset(is_testing: bool, verbose=True):
         return pd.read_csv(path)
 
     # pull from google sheets api
-    return pullData(sheet_name="Ax", verbose=verbose)
+    return pullData(sheet_name=sheet_name, verbose=verbose)
 
 
 def fake_objective(params: dict, context: dict, noise_std: float = 1.0) -> float:
@@ -269,17 +275,15 @@ def get_context_snapshot(prev_warp: dict | None = None) -> dict:
     return {**base, **prev_warp}
 
 
-def load_data_source():
+def load_data_source(
+    sheet_name: str = "Experiment Random Deltas", is_testing: bool = False
+):
     """
-    Select data source: Google Sheets or fake testing data.
+    Load data from Google Sheets or fake testing data.
     """
-    print("\n1) Use Google Sheets Data \n2) Use fake testing data")
-    choice = input("\nPlease choose one of the two: ")
-    if choice == "1":
-        return True, load_dataset(is_testing=False, verbose=True)
-    if choice == "2":
-        return False, load_dataset(is_testing=True, verbose=True)
-    raise ValueError("Invalid data source option")
+    if is_testing:
+        return False, load_dataset(is_testing=True, sheet_name=sheet_name, verbose=True)
+    return True, load_dataset(is_testing=False, sheet_name=sheet_name, verbose=True)
 
 
 def run_fake_trial(cbo, trial, context):
@@ -456,6 +460,17 @@ def main():
     try:
         prev_warp = None
 
+        print("\n1) Use Google Sheets Data \n2) Use fake testing data")
+        data_choice = input("\nPlease choose one of the two: ")
+
+        sheet_name = "Experiment Random Deltas"
+        if data_choice == "1":
+            sheet_name = input(
+                "\nEnter Google Sheet tab name (default: Experiment Random Deltas): "
+            ).strip()
+            if not sheet_name:
+                sheet_name = "Experiment Random Deltas"
+
         context = get_context_snapshot(prev_warp=prev_warp)
 
         cbo = ContextualBayesOptAx(
@@ -464,7 +479,9 @@ def main():
             minimize=True,
         )
 
-        use_real_data, df = load_data_source()
+        use_real_data, df = load_data_source(
+            sheet_name=sheet_name, is_testing=(data_choice == "2")
+        )
         cbo.add_historical(df)
         print("Loaded Dataset into CBO surrogate")
 
