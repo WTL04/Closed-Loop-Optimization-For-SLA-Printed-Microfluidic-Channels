@@ -2,7 +2,7 @@ import json
 import numpy as np
 from pathlib import Path
 
-from ..api.sheets_api import update_row
+from contextual_opt.src.api.sheets_api import update_row
 
 NUM_CHANNELS = 4
 
