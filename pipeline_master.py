@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 # Import your existing API script
-from contextual_opt.src import sheets_api
+from contextual_opt.src.api import sheets_api
 
 # Configuration
 SHEET_NAME = "Experiment Random Deltas"

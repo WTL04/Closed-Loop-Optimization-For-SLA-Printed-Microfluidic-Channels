@@ -297,10 +297,13 @@ def run_fake_trial(cbo, trial, context):
 
 # returns (bool, dict | None) to pass warp deltas forward to next trial
 def run_real_trial(
-    trial, context, num_channels: int = NUM_CHANNELS
+    trial, context, sheet_name: str, num_channels: int = NUM_CHANNELS
 ) -> tuple[bool, dict | None, int]:
     """
     Run a real trial: save suggested params to JSON and append to Google Sheets.
+
+    Args:
+        sheet_name: Name of the Google Sheets tab to write to
 
     Returns:
         bool: True if trial completed successfully, False otherwise
@@ -309,14 +312,14 @@ def run_real_trial(
     """
     suggested_params = trial.arms[0].parameters
 
-    batch_raw = get_latest_col_value(column_name="batch_id", sheet_name="Ax")
+    batch_raw = get_latest_col_value(column_name="batch_id", sheet_name=sheet_name)
     batch_id = int(batch_raw) if batch_raw is not None else 1
     batch_id += 1
 
     save_params_to_json(suggested_params, batch_id=batch_id)
 
     # append batch to channel dimensions to sheets
-    append_row(batch_id, suggested_params, context, sheet_name="Ax")
+    append_row(batch_id, suggested_params, context, sheet_name=sheet_name)
     print(f"\nAppended batch {batch_id} to Google Sheets.")
 
     # set deltas values in sheets to default as 0.0
@@ -503,7 +506,7 @@ def main():
             raise ValueError("Invalid CAD option")
 
         if use_real_data:
-            completed, prev_warp, batch_id = run_real_trial(trial, context)
+            completed, prev_warp, batch_id = run_real_trial(trial, context, sheet_name)
             if not completed:
                 return
             print(f"\nBatch {batch_id} saved. Run print, then post_print.py")
