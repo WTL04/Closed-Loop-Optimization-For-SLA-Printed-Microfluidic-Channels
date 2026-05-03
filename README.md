@@ -12,11 +12,11 @@ This assumes:
 
 # 1. Environment Setup
 
-Set up a virtual environment to install the required Python dependencies (including `pandas`, `gspread`, and CadQuery libraries). You can use either standard Python `venv` or `conda`.
+Set up a virtual environment to install the required Python dependencies with Python3.11 (including `pandas`, `gspread`, and CadQuery libraries). You can use either standard Python `venv` or `conda`.
 
 **Option A: Using venv**
 ```bash
-python3 -m venv venv
+python3.11 -m venv venv
 source venv/bin/activate
 pip install -r req.txt
 ```
