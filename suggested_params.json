@@ -1,9 +1,9 @@
 {
   "batch_id": 21,
   "layer_thickness_um": 100,
-  "channel_1_length": 40.008187892423265,
-  "channel_1_width": 0.5013485503788094,
-  "channel_1_height": 0.5023129874171909,
+  "channel_1_length": 40.00606405481576,
+  "channel_1_width": 0.5020686423096671,
+  "channel_1_height": 0.5020912441995683,
   "ambient_temp": 80.0,
   "resin_temp": 80.0,
   "resin_age": 15.0,
