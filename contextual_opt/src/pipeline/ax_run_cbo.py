@@ -219,19 +219,24 @@ def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) ->
     """
     squared_errors = []
     for i in range(1, num_channels + 1):
-        length_delta = params.get(f"channel_{i}_post_print_length_delta", 0.0)
-        width_delta = params.get(f"channel_{i}_post_print_width_delta", 0.0)
-        height_delta = params.get(f"channel_{i}_post_print_height_delta", 0.0)
+        try:
+            length_delta = float(params.get(f"channel_{i}_post_print_length_delta", 0.0) or 0.0)
+            width_delta = float(params.get(f"channel_{i}_post_print_width_delta", 0.0) or 0.0)
+            height_delta = float(params.get(f"channel_{i}_post_print_height_delta", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            length_delta = 0.0
+            width_delta = 0.0
+            height_delta = 0.0
 
         squared_errors.extend(
             [
-                length_delta**2,
-                width_delta**2,
-                height_delta**2,
+                length_delta ** 2,
+                width_delta ** 2,
+                height_delta ** 2,
             ]
         )
 
-    return float(np.mean(squared_errors))
+    return float(np.mean(squared_errors)) if squared_errors else 0.0
 
 
 def calculate_functional_recovery(extracted_flow_rate: float) -> float:
