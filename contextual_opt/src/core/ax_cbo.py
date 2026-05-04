@@ -139,9 +139,13 @@ class ContextualBayesOptAx:
                 val = getattr(row, name)
 
                 # Handle empty strings or NaN
-                if val == "" or val is None or (hasattr(val, '__float__') and pd.isna(val)):
+                if (
+                    val == ""
+                    or val is None
+                    or (hasattr(val, "__float__") and pd.isna(val))
+                ):
                     val = 0.0
-                
+
                 if p.parameter_type is ParameterType.INT:
                     params[name] = int(float(val))
                 elif p.parameter_type is ParameterType.FLOAT:
@@ -159,9 +163,13 @@ class ContextualBayesOptAx:
             trial.mark_running(no_runner_required=True)  # mark trial as running
 
             metric_val = getattr(row, self.metric_name)
-            
+
             # Handle empty or NaN metric values
-            if metric_val == "" or metric_val is None or (hasattr(metric_val, '__float__') and pd.isna(metric_val)):
+            if (
+                metric_val == ""
+                or metric_val is None
+                or (hasattr(metric_val, "__float__") and pd.isna(metric_val))
+            ):
                 metric_val = 0.0
 
             records.append(
@@ -231,32 +239,36 @@ class ContextualBayesOptAx:
         arm = trial.arms[0]
 
         rows = []
-        
+
         if metric_values:
             for metric_name, value in metric_values.items():
-                rows.append({
+                rows.append(
+                    {
+                        "trial_index": trial.index,
+                        "arm_name": arm.name,
+                        "metric_name": metric_name,
+                        "metric_signature": metric_name,
+                        "mean": float(value),
+                        "sem": 0.0,
+                    }
+                )
+        elif metric_value is not None:
+            rows.append(
+                {
                     "trial_index": trial.index,
                     "arm_name": arm.name,
-                    "metric_name": metric_name,
-                    "metric_signature": metric_name,
-                    "mean": float(value),
+                    "metric_name": self.metric_name,
+                    "metric_signature": self.metric_name,
+                    "mean": float(metric_value),
                     "sem": 0.0,
-                })
-        elif metric_value is not None:
-            rows.append({
-                "trial_index": trial.index,
-                "arm_name": arm.name,
-                "metric_name": self.metric_name,
-                "metric_signature": self.metric_name,
-                "mean": float(metric_value),
-                "sem": 0.0,
-            })
-        
+                }
+            )
+
         if rows:
             df = pd.DataFrame(rows)
             data = Data(df=df)
             self.experiment.attach_data(data)
-        
+
         trial.mark_completed()
         print(f"Trial Status: {trial.status}")
 

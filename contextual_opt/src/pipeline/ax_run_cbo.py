@@ -1,8 +1,10 @@
 import json
+import subprocess
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import cadquery as cq
+from pathlib import Path
 
 from contextual_opt.src.pipeline.config import (
     NUM_CHANNELS,
@@ -25,6 +27,17 @@ from ax.core import (
 from ax.core.parameter_constraint import ParameterConstraint
 from contextual_opt.src.api.sheets_api import pullData, get_latest_col_value, append_row
 
+# Nominal target dimensions in mm
+# All dimensional error computations are relative to these values
+NOMINAL_DIMENSIONS = {
+    "length": 40.0,
+    "width": 0.5,
+    "height": 0.5,
+}
+
+# Path to the shell script that runs the full CFD pipeline
+CFD_RUN_SCRIPT = "run_cfd.sh"
+
 
 def build_search_space(num_channels: int = NUM_CHANNELS):
     """
@@ -35,10 +48,10 @@ def build_search_space(num_channels: int = NUM_CHANNELS):
 
     Returns:
         SearchSpace with:
-        - 3 × num_channels channel dimension parameters (TUNABLE)
+        - 3 x num_channels channel dimension parameters (TUNABLE)
         - 1 layer thickness parameter (TUNABLE)
         - 3 context parameters: ambient_temp, resin_temp, resin_age (FIXED)
-        - 3 × num_channels post-print warp delta parameters (FIXED)
+        - 3 x num_channels post-print warp delta parameters (FIXED)
     """
     parameters = []
 
@@ -128,7 +141,7 @@ def build_search_space(num_channels: int = NUM_CHANNELS):
                 RangeParameter(
                     name=f"channel_{i}_post_print_width_delta",
                     parameter_type=ParameterType.FLOAT,
-                    lower=-0.05,  # ~15% of 0.3mm nominal — microchannels have worse relative error
+                    lower=-0.05,  # ~15% of 0.3mm nominal - microchannels have worse relative error
                     upper=0.05,
                 ),
                 RangeParameter(
@@ -205,34 +218,65 @@ def compute_flow_rate_cv(flow_rates: list[float]) -> float:
 
 def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) -> float:
     """
-    Compute mean squared error between intended and actual printed dimensions.
+    Compute mean squared error between the fabricated dimensions and the
+    nominal target dimensions (40 x 0.5 x 0.5 mm).
 
-    Actual = Intended + Delta
-    Error = mean(Delta_Length^2 + Delta_Width^2 + Delta_Height^2)
+    Fabricated dimension = CAD input dimension - delta (converted from µm to mm)
+    Error = mean((fabricated - nominal)^2) across all dimensions and channels
+
+    FIX: Previously computed delta^2 directly, which measured shrinkage magnitude
+    rather than the actual error from nominal. This meant the optimizer minimized
+    how much shrinkage occurred, not how close the fabricated part was to the target.
 
     Args:
-        params: Dict with channel_i_length/width/height and channel_i_post_print_*_delta
+        params: Dict with channel_i_length/width/height (mm) and
+                channel_i_post_print_*_delta (µm)
         num_channels: Number of channels (default: NUM_CHANNELS from config)
 
     Returns:
-        Mean squared error (lower is better)
+        Mean squared error in mm^2 (lower is better)
     """
     squared_errors = []
     for i in range(1, num_channels + 1):
         try:
-            length_delta = float(params.get(f"channel_{i}_post_print_length_delta", 0.0) or 0.0)
-            width_delta = float(params.get(f"channel_{i}_post_print_width_delta", 0.0) or 0.0)
-            height_delta = float(params.get(f"channel_{i}_post_print_height_delta", 0.0) or 0.0)
+            # Deltas are stored in µm — convert to mm before computing error
+            length_delta_mm = (
+                float(params.get(f"channel_{i}_post_print_length_delta", 0.0) or 0.0)
+                / 1000.0
+            )
+            width_delta_mm = (
+                float(params.get(f"channel_{i}_post_print_width_delta", 0.0) or 0.0)
+                / 1000.0
+            )
+            height_delta_mm = (
+                float(params.get(f"channel_{i}_post_print_height_delta", 0.0) or 0.0)
+                / 1000.0
+            )
         except (TypeError, ValueError):
-            length_delta = 0.0
-            width_delta = 0.0
-            height_delta = 0.0
+            length_delta_mm = 0.0
+            width_delta_mm = 0.0
+            height_delta_mm = 0.0
 
+        # CAD input dimensions suggested by Ax (already pre-distorted / compensated)
+        cad_length = float(
+            params.get(f"channel_{i}_length", NOMINAL_DIMENSIONS["length"])
+        )
+        cad_width = float(params.get(f"channel_{i}_width", NOMINAL_DIMENSIONS["width"]))
+        cad_height = float(
+            params.get(f"channel_{i}_height", NOMINAL_DIMENSIONS["height"])
+        )
+
+        # Fabricated dimensions after shrinkage is applied
+        fabricated_length = cad_length - length_delta_mm
+        fabricated_width = cad_width - width_delta_mm
+        fabricated_height = cad_height - height_delta_mm
+
+        # Error vs nominal target
         squared_errors.extend(
             [
-                length_delta ** 2,
-                width_delta ** 2,
-                height_delta ** 2,
+                (fabricated_length - NOMINAL_DIMENSIONS["length"]) ** 2,
+                (fabricated_width - NOMINAL_DIMENSIONS["width"]) ** 2,
+                (fabricated_height - NOMINAL_DIMENSIONS["height"]) ** 2,
             ]
         )
 
@@ -245,7 +289,7 @@ def calculate_functional_recovery(extracted_flow_rate: float) -> float:
     is to the perfect nominal baseline.
 
     Args:
-        extracted_flow_rate: Flow rate in m³/s from OpenFOAM
+        extracted_flow_rate: Flow rate in m^3/s from OpenFOAM
 
     Returns:
         Error percentage (0.0 = perfect recovery)
@@ -400,7 +444,7 @@ def generate_random_deltas(mode: str = "uniform") -> dict:
         mode: Distribution type (currently only uniform supported)
 
     Returns:
-        dict with length, width, height delta values in μm
+        dict with length, width, height delta values in µm
     """
     return {
         "length": np.random.uniform(0, 20),
@@ -412,12 +456,12 @@ def generate_random_deltas(mode: str = "uniform") -> dict:
 def generate_realistic_deltas() -> dict:
     """
     Generate realistic post-print deltas combining:
-    - Gaussian core (normal process variation, μ=8μm, σ=2.5μm)
+    - Gaussian core (normal process variation, mu=8µm, sigma=2.5µm)
     - Positive skew (overcure effect)
     - Occasional outliers (printer failures)
 
     Returns:
-        dict with length, width, height delta values in μm
+        dict with length, width, height delta values in µm
     """
     deltas = {}
     for dim in ["length", "width", "height"]:
@@ -436,9 +480,64 @@ def generate_realistic_deltas() -> dict:
     return deltas
 
 
+def run_cfd_simulation(
+    length_delta: float,
+    width_delta: float,
+    height_delta: float,
+) -> float:
+    """
+    Run the full CFD pipeline by calling run_cfd.sh with delta arguments.
+    Blocks until the simulation completes and returns the extracted flow rate.
+
+    Deltas are passed in µm. run_cfd.sh passes them to
+    single_channel_inlet_outlet_cfd_export.py which handles unit conversion.
+
+    Args:
+        length_delta: Post-print length shrinkage in µm
+        width_delta:  Post-print width shrinkage in µm
+        height_delta: Post-print height shrinkage in µm
+
+    Returns:
+        Flow rate in m^3/s extracted from OpenFOAM postProcessing output.
+        Returns 0.0 if the simulation fails.
+    """
+    try:
+        print(
+            f"  Running CFD: deltas L={length_delta:.2f} W={width_delta:.2f} H={height_delta:.2f} µm"
+        )
+        subprocess.run(
+            [
+                "bash",
+                CFD_RUN_SCRIPT,
+                str(length_delta),
+                str(width_delta),
+                str(height_delta),
+            ],
+            check=True,
+        )
+
+        # Parse flow rate from the output file written by extract_flow_rate.py
+        flow_rate_path = Path("cfd/channelCase/flow_rate.txt")
+        if not flow_rate_path.exists():
+            print("  WARNING: flow_rate.txt not found after CFD run. Returning 0.0")
+            return 0.0
+
+        flow_rate = float(flow_rate_path.read_text().strip())
+        print(f"  CFD complete. Flow rate: {flow_rate:.6e} m^3/s")
+        return flow_rate
+
+    except subprocess.CalledProcessError as e:
+        print(f"  CFD simulation failed: {e}. Returning 0.0")
+        return 0.0
+    except (ValueError, IOError) as e:
+        print(f"  Failed to read flow_rate.txt: {e}. Returning 0.0")
+        return 0.0
+
+
 def simulate_print_trial(suggested_params: dict, delta_mode: str = "realistic") -> dict:
     """
     Simulate a print trial by generating post-print deltas and computing metrics.
+    Used for fake/testing runs only — does not call OpenFOAM.
 
     Args:
         suggested_params: Geometry parameters from CBO suggestion
@@ -453,9 +552,16 @@ def simulate_print_trial(suggested_params: dict, delta_mode: str = "realistic") 
         deltas = generate_realistic_deltas()
 
     trial_params = {
-        "channel_1_length": suggested_params.get("channel_1_length", 40.0),
-        "channel_1_width": suggested_params.get("channel_1_width", 0.5),
-        "channel_1_height": suggested_params.get("channel_1_height", 0.5),
+        "channel_1_length": suggested_params.get(
+            "channel_1_length", NOMINAL_DIMENSIONS["length"]
+        ),
+        "channel_1_width": suggested_params.get(
+            "channel_1_width", NOMINAL_DIMENSIONS["width"]
+        ),
+        "channel_1_height": suggested_params.get(
+            "channel_1_height", NOMINAL_DIMENSIONS["height"]
+        ),
+        # Deltas are in µm — compute_dimensional_error converts them internally
         "channel_1_post_print_length_delta": deltas["length"],
         "channel_1_post_print_width_delta": deltas["width"],
         "channel_1_post_print_height_delta": deltas["height"],
@@ -463,6 +569,7 @@ def simulate_print_trial(suggested_params: dict, delta_mode: str = "realistic") 
 
     error = compute_dimensional_error(trial_params, num_channels=1)
 
+    # Fake flow rate for testing — not from OpenFOAM
     flow_rate = np.random.normal(0.1387, 0.005)
     flow_rate_m3s = flow_rate / (1e6 * 60)
     recovery_error = calculate_functional_recovery(flow_rate_m3s)
@@ -488,8 +595,8 @@ def get_context_snapshot(prev_warp: dict | None = None) -> dict:
 
     if choice == "1":
         base = {
-            "ambient_temp": float(input("ambient_temp (°F): ")),
-            "resin_temp": float(input("resin_temp (°F): ")),
+            "ambient_temp": float(input("ambient_temp (F): ")),
+            "resin_temp": float(input("resin_temp (F): ")),
             "resin_age": float(input("resin_age (estimated hours since opened): ")),
         }
     elif choice == "2":
@@ -527,14 +634,15 @@ def run_fake_trial(cbo, trial, context, delta_mode: str = "realistic"):
     """
     Run a fake trial for testing purposes.
     Generates post-print deltas, computes metrics, and observes trial.
+    Does NOT call OpenFOAM — flow rate is sampled from a normal distribution.
     """
     suggested_params = trial.arms[0].parameters
     results = simulate_print_trial(suggested_params, delta_mode=delta_mode)
 
     print(
-        f"  Generated deltas: L={results['deltas']['length']:.2f}, W={results['deltas']['width']:.2f}, H={results['deltas']['height']:.2f} μm"
+        f"  Generated deltas: L={results['deltas']['length']:.2f}, W={results['deltas']['width']:.2f}, H={results['deltas']['height']:.2f} µm"
     )
-    print(f"  Dimensional Error: {results['dimensional_error']:.4f}")
+    print(f"  Dimensional Error: {results['dimensional_error']:.6f} mm^2")
     print(f"  Flow Rate: {results['flow_rate']:.4f} mL/min")
     print(f"  Functional Recovery Error: {results['functional_recovery_error']:.2f}%")
 
@@ -544,25 +652,33 @@ def run_fake_trial(cbo, trial, context, delta_mode: str = "realistic"):
             "dimensional_error": results["dimensional_error"],
             "flow_rate": results["flow_rate"],
             "functional_recovery_error": results["functional_recovery_error"],
-        }
+        },
     )
 
 
-# returns (bool, dict | None) to pass warp deltas forward to next trial
 def run_real_trial(
     trial, context, sheet_name: str, num_channels: int = NUM_CHANNELS
-) -> tuple[bool, dict | None, int]:
+) -> tuple[bool, dict | None, int, dict]:
     """
-    Run a real trial: save suggested params to JSON and append to Google Sheets.
-    Generates deltas based on sheet_name type.
+    Run a real trial: generate deltas, run OpenFOAM CFD, compute metrics,
+    and append results to Google Sheets.
+
+    FIX: Previously returned 3 values but main() unpacked 4.
+         Now returns 4 values: (success, warp_deltas, batch_id, trial_results).
+    FIX: Now calls run_cfd_simulation() to get real flow rate from OpenFOAM
+         instead of sampling from np.random.normal().
 
     Args:
-        sheet_name: Name of the Google Sheets tab to write to
+        trial:        Ax trial object from cbo.suggest()
+        context:      Context snapshot dict
+        sheet_name:   Name of the Google Sheets tab to write to
+        num_channels: Number of channels
 
     Returns:
-        bool: True if trial completed successfully, False otherwise
-        dict: warp deltas to pass forward to next trial
-        int: batch_id for reference
+        bool:  True if trial completed successfully, False otherwise
+        dict:  warp deltas to pass forward to next trial context
+        int:   batch_id for reference
+        dict:  trial results (dimensional_error, flow_rate, functional_recovery_error)
     """
     suggested_params = trial.arms[0].parameters
 
@@ -572,6 +688,7 @@ def run_real_trial(
 
     save_params_to_json(suggested_params, batch_id=batch_id)
 
+    # Generate post-print deltas based on sheet type
     if "Realistic" in sheet_name:
         deltas = generate_realistic_deltas()
         delta_mode = "realistic"
@@ -580,32 +697,72 @@ def run_real_trial(
         delta_mode = "random"
 
     print(
-        f"  Generated deltas ({delta_mode}): L={deltas['length']:.2f}, W={deltas['width']:.2f}, H={deltas['height']:.2f} μm"
+        f"  Generated deltas ({delta_mode}): L={deltas['length']:.2f}, W={deltas['width']:.2f}, H={deltas['height']:.2f} µm"
     )
 
-    params_with_deltas = {**suggested_params, **deltas}
+    # Run the real CFD pipeline with the generated deltas
+    # This calls run_cfd.sh which: generates STLs, runs OpenFOAM, extracts flow rate
+    flow_rate_m3s = run_cfd_simulation(
+        length_delta=deltas["length"],
+        width_delta=deltas["width"],
+        height_delta=deltas["height"],
+    )
 
+    # Convert m^3/s to mL/min for storage and display
+    flow_rate_ml_per_min = flow_rate_m3s * 1e6 * 60
+
+    # Build params dict for dimensional error computation
+    # Deltas in µm — compute_dimensional_error handles unit conversion internally
+    trial_params = {
+        "channel_1_length": suggested_params.get(
+            "channel_1_length", NOMINAL_DIMENSIONS["length"]
+        ),
+        "channel_1_width": suggested_params.get(
+            "channel_1_width", NOMINAL_DIMENSIONS["width"]
+        ),
+        "channel_1_height": suggested_params.get(
+            "channel_1_height", NOMINAL_DIMENSIONS["height"]
+        ),
+        "channel_1_post_print_length_delta": deltas["length"],
+        "channel_1_post_print_width_delta": deltas["width"],
+        "channel_1_post_print_height_delta": deltas["height"],
+    }
+
+    dimensional_error = compute_dimensional_error(trial_params, num_channels=1)
+    recovery_error = calculate_functional_recovery(flow_rate_m3s)
+
+    trial_results = {
+        "dimensional_error": dimensional_error,
+        "flow_rate": flow_rate_ml_per_min,
+        "functional_recovery_error": recovery_error,
+    }
+
+    print(f"  Dimensional Error: {dimensional_error:.6f} mm^2")
+    print(f"  Flow Rate: {flow_rate_ml_per_min:.4f} mL/min")
+    print(f"  Functional Recovery Error: {recovery_error:.2f}%")
+
+    # Append full row to Google Sheets
+    params_with_deltas = {**suggested_params, **deltas}
     append_row(batch_id, params_with_deltas, context, sheet_name=sheet_name)
     print(f"\nAppended batch {batch_id} to Google Sheets.")
 
-    trial_results = simulate_print_trial(suggested_params, delta_mode=delta_mode)
-    print(f"  Dimensional Error: {trial_results['dimensional_error']:.4f}")
-    print(f"  Flow Rate: {trial_results['flow_rate']:.4f} mL/min")
-    print(
-        f"  Functional Recovery Error: {trial_results['functional_recovery_error']:.2f}%"
-    )
-
+    # Carry warp deltas forward as context for the next trial
     warp_deltas = {}
     for i in range(1, num_channels + 1):
         for dim in ("length", "width", "height"):
             warp_deltas[f"channel_{i}_post_print_{dim}_delta"] = deltas[dim]
 
-    return True, warp_deltas, batch_id
+    return True, warp_deltas, batch_id, trial_results
 
 
 def build_cad_model(params: dict, num_channels: int = NUM_CHANNELS):
     """
     Build CAD model with 4 independent channel rows.
+
+    NOTE: This builds the physical printed part (solid plate with channels cut out),
+    NOT the fluid domain required by OpenFOAM. For CFD geometry generation,
+    use single_channel_inlet_outlet_cfd_export.py instead.
+    This function is retained for physical CAD export / visualisation purposes only.
 
     Channels are arranged as parallel rows along the Y-axis with minimum spacing.
     Each channel has its own length, width, and height.
@@ -658,6 +815,7 @@ def build_cad_model(params: dict, num_channels: int = NUM_CHANNELS):
 def export_cad_model(params: dict, filename: str = "../cad_models/channels_fluid.stl"):
     """
     Build and export CAD model from suggested params.
+    Note: exports the physical plate geometry, not the CFD fluid domain.
     """
     model = build_cad_model(params)
     cq.exporters.export(model, filename)
@@ -705,7 +863,7 @@ def visualize_convergence(cbo):
     axes[0].plot(trial_indices, dimensional_errors, "b-o", linewidth=2, markersize=6)
     axes[0].set_title("Dimensional Error (MSE) - Primary Objective", fontsize=12)
     axes[0].set_xlabel("Trial")
-    axes[0].set_ylabel("Dimensional Error (μm²)")
+    axes[0].set_ylabel("Dimensional Error (mm^2)")
     axes[0].grid(True, alpha=0.3)
 
     axes[1].plot(trial_indices, flow_rates, "g-o", linewidth=2, markersize=6)
@@ -824,21 +982,26 @@ def main():
             raise ValueError("Invalid CAD option")
 
         if use_real_data:
-            completed, prev_warp, batch_id, trial_results = run_real_trial(trial, context, sheet_name)
+            # FIX: run_real_trial now returns 4 values (was 3)
+            completed, prev_warp, batch_id, trial_results = run_real_trial(
+                trial, context, sheet_name
+            )
             if not completed:
                 return
-            
+
             cbo.observe(
                 trial=trial,
                 metric_values={
                     "dimensional_error": trial_results["dimensional_error"],
                     "flow_rate": trial_results["flow_rate"],
-                    "functional_recovery_error": trial_results["functional_recovery_error"],
-                }
+                    "functional_recovery_error": trial_results[
+                        "functional_recovery_error"
+                    ],
+                },
             )
 
             print(
-                f"\nBatch {batch_id} saved. CBO updated with dimensional_error: {trial_results['dimensional_error']:.4f}"
+                f"\nBatch {batch_id} saved. CBO updated with dimensional_error: {trial_results['dimensional_error']:.6f} mm^2"
             )
         else:
             run_fake_trial(cbo, trial, context)
