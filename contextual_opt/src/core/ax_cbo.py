@@ -138,8 +138,12 @@ class ContextualBayesOptAx:
                 p = self.search_space.parameters[name]
                 val = getattr(row, name)
 
+                # Handle empty strings or NaN
+                if val == "" or val is None or (hasattr(val, '__float__') and pd.isna(val)):
+                    val = 0.0
+                
                 if p.parameter_type is ParameterType.INT:
-                    params[name] = int(val)
+                    params[name] = int(float(val))
                 elif p.parameter_type is ParameterType.FLOAT:
                     params[name] = float(val)
                 else:
@@ -155,6 +159,10 @@ class ContextualBayesOptAx:
             trial.mark_running(no_runner_required=True)  # mark trial as running
 
             metric_val = getattr(row, self.metric_name)
+            
+            # Handle empty or NaN metric values
+            if metric_val == "" or metric_val is None or (hasattr(metric_val, '__float__') and pd.isna(metric_val)):
+                metric_val = 0.0
 
             records.append(
                 {
