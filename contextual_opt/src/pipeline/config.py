@@ -1,12 +1,14 @@
 # Configuration constants
-NUM_CHANNELS = 4
+NUM_CHANNELS = 1
 MIN_CHANNEL_SPACING = 2.0  # mm - minimum gap between adjacent channel rows
 
-# Channel dimension bounds (same for all channels)
-# TODO: Adjust to real range
-CHANNEL_LENGTH_BOUNDS = (10.0, 18.0)  # mm
-CHANNEL_WIDTH_BOUNDS = (0.1, 0.5)  # mm
-CHANNEL_HEIGHT_BOUNDS = (0.1, 0.7)  # mm
+# Baseline ground truth for functional validation
+BASELINE_FLOW_RATE = 2.312215e-9  # m³/s - measured using openFOAM with no 0.0 deltas
+
+# Channel dimension bounds (pre-distortion limits)
+CHANNEL_LENGTH_BOUNDS = (40.0, 40.05)  # mm
+CHANNEL_WIDTH_BOUNDS = (0.50, 0.52)  # mm
+CHANNEL_HEIGHT_BOUNDS = (0.50, 0.52)  # mm
 
 # Base plate dimensions for CAD model
 # TODO: Adjust to real dimensions

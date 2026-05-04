@@ -13,6 +13,7 @@ from contextual_opt.src.pipeline.config import (
     BASE_WIDTH,
     BASE_LENGTH,
     BASE_THICKNESS,
+    BASELINE_FLOW_RATE,
 )
 from contextual_opt.src.core.ax_cbo import ContextualBayesOptAx
 from ax.core import (
@@ -99,6 +100,17 @@ def build_search_space(num_channels: int = NUM_CHANNELS):
                 upper=72.0,
             ),
         ]
+    )
+
+    # Channel position context parameter (which channel on the chip)
+    parameters.append(
+        ChoiceParameter(
+            name="channel_position",
+            parameter_type=ParameterType.INT,
+            values=[1, 2, 3, 4],
+            is_ordered=False,
+            sort_values=True,
+        )
     )
 
     # post-print warp deltas (measured - intended) from the previous print.
@@ -191,6 +203,98 @@ def compute_flow_rate_cv(flow_rates: list[float]) -> float:
     return float(np.std(arr) / mean)
 
 
+def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) -> float:
+    """
+    Compute mean squared error between intended and actual printed dimensions.
+
+    Actual = Intended + Delta
+    Error = mean(Delta_Length^2 + Delta_Width^2 + Delta_Height^2)
+
+    Args:
+        params: Dict with channel_i_length/width/height and channel_i_post_print_*_delta
+        num_channels: Number of channels (default: NUM_CHANNELS from config)
+
+    Returns:
+        Mean squared error (lower is better)
+    """
+    squared_errors = []
+    for i in range(1, num_channels + 1):
+        length_delta = params.get(f"channel_{i}_post_print_length_delta", 0.0)
+        width_delta = params.get(f"channel_{i}_post_print_width_delta", 0.0)
+        height_delta = params.get(f"channel_{i}_post_print_height_delta", 0.0)
+
+        squared_errors.extend([
+            length_delta ** 2,
+            width_delta ** 2,
+            height_delta ** 2,
+        ])
+
+    return float(np.mean(squared_errors))
+
+
+def calculate_functional_recovery(extracted_flow_rate: float) -> float:
+    """
+    Calculates how close the pre-distorted channel's flow rate
+    is to the perfect nominal baseline.
+
+    Args:
+        extracted_flow_rate: Flow rate in m³/s from OpenFOAM
+
+    Returns:
+        Error percentage (0.0 = perfect recovery)
+    """
+    return abs(extracted_flow_rate - BASELINE_FLOW_RATE) / BASELINE_FLOW_RATE * 100.0
+
+
+def melt_dataset_to_single_channel(df: pd.DataFrame, original_num_channels: int = 4) -> pd.DataFrame:
+    """
+    Converts a batch-based dataset (4 channels per row) into a
+    channel-based dataset (1 channel per row) for efficient 1D Bayesian Optimization.
+    """
+    shared_cols = ['batch_id', 'layer_thickness_um', 'ambient_temp', 'resin_temp', 'resin_age']
+    melted_rows = []
+
+    for i in range(1, original_num_channels + 1):
+        temp_df = df[shared_cols].copy()
+
+        temp_df['channel_position'] = i
+
+        temp_df['channel_1_length'] = df[f'channel_{i}_length']
+        temp_df['channel_1_width'] = df[f'channel_{i}_width']
+        temp_df['channel_1_height'] = df[f'channel_{i}_height']
+
+        temp_df['channel_1_post_print_length_delta'] = df[f'channel_{i}_post_print_length_delta']
+        temp_df['channel_1_post_print_width_delta'] = df[f'channel_{i}_post_print_width_delta']
+        temp_df['channel_1_post_print_height_delta'] = df[f'channel_{i}_post_print_height_delta']
+
+        temp_df['flow_rate'] = df[f'channel_{i}_flow_rate_ml_per_min']
+
+        melted_rows.append(temp_df)
+
+    melted_df = pd.concat(melted_rows, ignore_index=True)
+
+    molten = melted_df
+
+    errors = []
+    for _, row in molten.iterrows():
+        errors.append(compute_dimensional_error(row.to_dict(), num_channels=1))
+    molten['dimensional_error'] = errors
+
+    flow_rates_per_batch = molten.groupby('batch_id')['flow_rate'].apply(list)
+    cv_values = []
+    recovery_values = []
+    for _, row in molten.iterrows():
+        batch_id = row['batch_id']
+        fr_list = flow_rates_per_batch[batch_id]
+        cv_values.append(compute_flow_rate_cv(fr_list))
+        flow_rate_m3s = row['flow_rate'] / (1e6 * 60)
+        recovery_values.append(calculate_functional_recovery(flow_rate_m3s))
+    molten['flow_rate_cv'] = cv_values
+    molten['functional_recovery_error'] = recovery_values
+
+    return molten
+
+
 def load_dataset(
     is_testing: bool, sheet_name: str = "Experiment Random Deltas", verbose=True
 ):
@@ -226,10 +330,16 @@ def load_dataset(
 
         if verbose:
             print(f"Loading fake dataset: {path}")
-        return pd.read_csv(path)
+        df = pd.read_csv(path)
+    else:
+        df = pullData(sheet_name=sheet_name, verbose=verbose)
 
-    # pull from google sheets api
-    return pullData(sheet_name=sheet_name, verbose=verbose)
+    melted_df = melt_dataset_to_single_channel(df, original_num_channels=4)
+
+    if verbose:
+        print(f"Data Melted: Converted {len(df)} batches into {len(melted_df)} independent channel trials.")
+
+    return melted_df
 
 
 def fake_objective(params: dict, context: dict, noise_std: float = 1.0) -> float:
@@ -237,6 +347,90 @@ def fake_objective(params: dict, context: dict, noise_std: float = 1.0) -> float
     Fake objective for testing only.
     """
     return float(np.random.normal(1e-6, noise_std))
+
+
+def generate_random_deltas(mode: str = "uniform") -> dict:
+    """
+    Generate random post-print deltas using uniform distribution.
+
+    Args:
+        mode: Distribution type (currently only uniform supported)
+
+    Returns:
+        dict with length, width, height delta values in μm
+    """
+    return {
+        "length": np.random.uniform(0, 20),
+        "width": np.random.uniform(0, 20),
+        "height": np.random.uniform(0, 20),
+    }
+
+
+def generate_realistic_deltas() -> dict:
+    """
+    Generate realistic post-print deltas combining:
+    - Gaussian core (normal process variation, μ=8μm, σ=2.5μm)
+    - Positive skew (overcure effect)
+    - Occasional outliers (printer failures)
+
+    Returns:
+        dict with length, width, height delta values in μm
+    """
+    deltas = {}
+    for dim in ["length", "width", "height"]:
+        core = np.random.normal(8.0, 2.5)
+
+        overcure = 0.0
+        if np.random.random() < 0.3:
+            overcure = np.random.uniform(0, 5)
+
+        outlier = 0.0
+        if np.random.random() < 0.05:
+            outlier = np.random.uniform(15, 25)
+
+        deltas[dim] = core + overcure + outlier
+
+    return deltas
+
+
+def simulate_print_trial(suggested_params: dict, delta_mode: str = "realistic") -> dict:
+    """
+    Simulate a print trial by generating post-print deltas and computing metrics.
+
+    Args:
+        suggested_params: Geometry parameters from CBO suggestion
+        delta_mode: "random" for uniform, "realistic" for Gaussian+skew+outliers
+
+    Returns:
+        dict with all metrics including dimensional_error, flow_rate, flow_rate_cv
+    """
+    if delta_mode == "random":
+        deltas = generate_random_deltas()
+    else:
+        deltas = generate_realistic_deltas()
+
+    trial_params = {
+        "channel_1_length": suggested_params.get("channel_1_length", 40.0),
+        "channel_1_width": suggested_params.get("channel_1_width", 0.5),
+        "channel_1_height": suggested_params.get("channel_1_height", 0.5),
+        "channel_1_post_print_length_delta": deltas["length"],
+        "channel_1_post_print_width_delta": deltas["width"],
+        "channel_1_post_print_height_delta": deltas["height"],
+    }
+
+    error = compute_dimensional_error(trial_params, num_channels=1)
+
+    flow_rate = np.random.normal(0.1387, 0.005)
+    flow_rate_m3s = flow_rate / (1e6 * 60)
+    recovery_error = calculate_functional_recovery(flow_rate_m3s)
+
+    return {
+        "dimensional_error": error,
+        "flow_rate": flow_rate,
+        "flow_rate_cv": 0.0,
+        "functional_recovery_error": recovery_error,
+        "deltas": deltas,
+    }
 
 
 def get_context_snapshot(prev_warp: dict | None = None) -> dict:
@@ -286,13 +480,20 @@ def load_data_source(
     return True, load_dataset(is_testing=False, sheet_name=sheet_name, verbose=True)
 
 
-def run_fake_trial(cbo, trial, context):
+def run_fake_trial(cbo, trial, context, delta_mode: str = "realistic"):
     """
     Run a fake trial for testing purposes.
+    Generates post-print deltas, computes metrics, and observes trial.
     """
     suggested_params = trial.arms[0].parameters
-    y = fake_objective(suggested_params, context)
-    cbo.observe(trial=trial, metric_value=y)
+    results = simulate_print_trial(suggested_params, delta_mode=delta_mode)
+
+    print(f"  Generated deltas: L={results['deltas']['length']:.2f}, W={results['deltas']['width']:.2f}, H={results['deltas']['height']:.2f} μm")
+    print(f"  Dimensional Error: {results['dimensional_error']:.4f}")
+    print(f"  Flow Rate: {results['flow_rate']:.4f} mL/min")
+    print(f"  Functional Recovery Error: {results['functional_recovery_error']:.2f}%")
+
+    cbo.observe(trial=trial, metric_value=results["dimensional_error"])
 
 
 # returns (bool, dict | None) to pass warp deltas forward to next trial
@@ -301,6 +502,7 @@ def run_real_trial(
 ) -> tuple[bool, dict | None, int]:
     """
     Run a real trial: save suggested params to JSON and append to Google Sheets.
+    Generates deltas based on sheet_name type.
 
     Args:
         sheet_name: Name of the Google Sheets tab to write to
@@ -318,23 +520,29 @@ def run_real_trial(
 
     save_params_to_json(suggested_params, batch_id=batch_id)
 
-    # append batch to channel dimensions to sheets
-    append_row(batch_id, suggested_params, context, sheet_name=sheet_name)
+    if "Realistic" in sheet_name:
+        deltas = generate_realistic_deltas()
+        delta_mode = "realistic"
+    else:
+        deltas = generate_random_deltas()
+        delta_mode = "random"
+
+    print(f"  Generated deltas ({delta_mode}): L={deltas['length']:.2f}, W={deltas['width']:.2f}, H={deltas['height']:.2f} μm")
+
+    params_with_deltas = {**suggested_params, **deltas}
+
+    append_row(batch_id, params_with_deltas, context, sheet_name=sheet_name)
     print(f"\nAppended batch {batch_id} to Google Sheets.")
 
-    # set deltas values in sheets to default as 0.0
+    trial_results = simulate_print_trial(suggested_params, delta_mode=delta_mode)
+    print(f"  Dimensional Error: {trial_results['dimensional_error']:.4f}")
+    print(f"  Flow Rate: {trial_results['flow_rate']:.4f} mL/min")
+    print(f"  Functional Recovery Error: {trial_results['functional_recovery_error']:.2f}%")
+
     warp_deltas = {}
     for i in range(1, num_channels + 1):
         for dim in ("length", "width", "height"):
-            warp_deltas[f"channel_{i}_post_print_{dim}_delta"] = 0.0
-
-    # set flow rate values in sheets to default as 0.0
-    flow_rates = {}
-    for i in range(1, num_channels + 1):
-        flow_rates[f"channel_{i}_flow_rate_ml_per_min"] = 0.0
-    flow_rates["flow_rate_cv"] = 0.0
-
-    print("Run post_print.py to record measurements.")
+            warp_deltas[f"channel_{i}_post_print_{dim}_delta"] = deltas[dim]
 
     return True, warp_deltas, batch_id
 
@@ -478,8 +686,9 @@ def main():
 
         cbo = ContextualBayesOptAx(
             search_space=build_search_space(),
-            metric_name="flow_rate_cv",
+            metric_name="dimensional_error",
             minimize=True,
+            tracking_metrics=["flow_rate", "flow_rate_cv", "functional_recovery_error"],
         )
 
         use_real_data, df = load_data_source(
@@ -509,7 +718,15 @@ def main():
             completed, prev_warp, batch_id = run_real_trial(trial, context, sheet_name)
             if not completed:
                 return
-            print(f"\nBatch {batch_id} saved. Run print, then post_print.py")
+            
+            if "Realistic" in sheet_name:
+                delta_mode = "realistic"
+            else:
+                delta_mode = "random"
+            trial_results = simulate_print_trial(trial.arms[0].parameters, delta_mode=delta_mode)
+            cbo.observe(trial=trial, metric_value=trial_results["dimensional_error"])
+            
+            print(f"\nBatch {batch_id} saved. CBO updated with dimensional_error: {trial_results['dimensional_error']:.4f}")
         else:
             run_fake_trial(cbo, trial, context)
             prev_warp = None
