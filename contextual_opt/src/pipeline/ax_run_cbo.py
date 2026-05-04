@@ -223,11 +223,13 @@ def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) ->
         width_delta = params.get(f"channel_{i}_post_print_width_delta", 0.0)
         height_delta = params.get(f"channel_{i}_post_print_height_delta", 0.0)
 
-        squared_errors.extend([
-            length_delta ** 2,
-            width_delta ** 2,
-            height_delta ** 2,
-        ])
+        squared_errors.extend(
+            [
+                length_delta**2,
+                width_delta**2,
+                height_delta**2,
+            ]
+        )
 
     return float(np.mean(squared_errors))
 
@@ -246,28 +248,42 @@ def calculate_functional_recovery(extracted_flow_rate: float) -> float:
     return abs(extracted_flow_rate - BASELINE_FLOW_RATE) / BASELINE_FLOW_RATE * 100.0
 
 
-def melt_dataset_to_single_channel(df: pd.DataFrame, original_num_channels: int = 4) -> pd.DataFrame:
+def melt_dataset_to_single_channel(
+    df: pd.DataFrame, original_num_channels: int = 4
+) -> pd.DataFrame:
     """
     Converts a batch-based dataset (4 channels per row) into a
     channel-based dataset (1 channel per row) for efficient 1D Bayesian Optimization.
     """
-    shared_cols = ['batch_id', 'layer_thickness_um', 'ambient_temp', 'resin_temp', 'resin_age']
+    shared_cols = [
+        "batch_id",
+        "layer_thickness_um",
+        "ambient_temp",
+        "resin_temp",
+        "resin_age",
+    ]
     melted_rows = []
 
     for i in range(1, original_num_channels + 1):
         temp_df = df[shared_cols].copy()
 
-        temp_df['channel_position'] = i
+        temp_df["channel_position"] = i
 
-        temp_df['channel_1_length'] = df[f'channel_{i}_length']
-        temp_df['channel_1_width'] = df[f'channel_{i}_width']
-        temp_df['channel_1_height'] = df[f'channel_{i}_height']
+        temp_df["channel_1_length"] = df[f"channel_{i}_length"]
+        temp_df["channel_1_width"] = df[f"channel_{i}_width"]
+        temp_df["channel_1_height"] = df[f"channel_{i}_height"]
 
-        temp_df['channel_1_post_print_length_delta'] = df[f'channel_{i}_post_print_length_delta']
-        temp_df['channel_1_post_print_width_delta'] = df[f'channel_{i}_post_print_width_delta']
-        temp_df['channel_1_post_print_height_delta'] = df[f'channel_{i}_post_print_height_delta']
+        temp_df["channel_1_post_print_length_delta"] = df[
+            f"channel_{i}_post_print_length_delta"
+        ]
+        temp_df["channel_1_post_print_width_delta"] = df[
+            f"channel_{i}_post_print_width_delta"
+        ]
+        temp_df["channel_1_post_print_height_delta"] = df[
+            f"channel_{i}_post_print_height_delta"
+        ]
 
-        temp_df['flow_rate'] = df[f'channel_{i}_flow_rate_ml_per_min']
+        temp_df["flow_rate"] = df[f"channel_{i}_flow_rate_ml_per_min"]
 
         melted_rows.append(temp_df)
 
@@ -278,19 +294,39 @@ def melt_dataset_to_single_channel(df: pd.DataFrame, original_num_channels: int 
     errors = []
     for _, row in molten.iterrows():
         errors.append(compute_dimensional_error(row.to_dict(), num_channels=1))
-    molten['dimensional_error'] = errors
+    molten["dimensional_error"] = errors
 
-    flow_rates_per_batch = molten.groupby('batch_id')['flow_rate'].apply(list)
+    flow_rates_per_batch = molten.groupby("batch_id")["flow_rate"].apply(list)
     cv_values = []
     recovery_values = []
     for _, row in molten.iterrows():
-        batch_id = row['batch_id']
-        fr_list = flow_rates_per_batch[batch_id]
-        cv_values.append(compute_flow_rate_cv(fr_list))
-        flow_rate_m3s = row['flow_rate'] / (1e6 * 60)
+        batch_id = row["batch_id"]
+        fr_list = flow_rates_per_batch.get(batch_id, [])
+        fr_clean = []
+        for fr in fr_list:
+            try:
+                if pd.isna(fr):
+                    continue
+                fr_val = float(fr)
+                fr_clean.append(fr_val)
+            except (TypeError, ValueError):
+                continue
+        fr_clean = [fr for fr in fr_clean if not pd.isna(fr)]
+        if len(fr_clean) > 1:
+            cv_values.append(compute_flow_rate_cv(fr_clean))
+        else:
+            cv_values.append(0.0)
+        flow_rate_val = row.get("flow_rate", 0.0)
+        try:
+            if pd.isna(flow_rate_val):
+                flow_rate_m3s = 0.0
+            else:
+                flow_rate_m3s = float(flow_rate_val) / (1e6 * 60)
+        except (TypeError, ValueError):
+            flow_rate_m3s = 0.0
         recovery_values.append(calculate_functional_recovery(flow_rate_m3s))
-    molten['flow_rate_cv'] = cv_values
-    molten['functional_recovery_error'] = recovery_values
+    molten["flow_rate_cv"] = cv_values
+    molten["functional_recovery_error"] = recovery_values
 
     return molten
 
@@ -337,7 +373,9 @@ def load_dataset(
     melted_df = melt_dataset_to_single_channel(df, original_num_channels=4)
 
     if verbose:
-        print(f"Data Melted: Converted {len(df)} batches into {len(melted_df)} independent channel trials.")
+        print(
+            f"Data Melted: Converted {len(df)} batches into {len(melted_df)} independent channel trials."
+        )
 
     return melted_df
 
@@ -488,12 +526,21 @@ def run_fake_trial(cbo, trial, context, delta_mode: str = "realistic"):
     suggested_params = trial.arms[0].parameters
     results = simulate_print_trial(suggested_params, delta_mode=delta_mode)
 
-    print(f"  Generated deltas: L={results['deltas']['length']:.2f}, W={results['deltas']['width']:.2f}, H={results['deltas']['height']:.2f} μm")
+    print(
+        f"  Generated deltas: L={results['deltas']['length']:.2f}, W={results['deltas']['width']:.2f}, H={results['deltas']['height']:.2f} μm"
+    )
     print(f"  Dimensional Error: {results['dimensional_error']:.4f}")
     print(f"  Flow Rate: {results['flow_rate']:.4f} mL/min")
     print(f"  Functional Recovery Error: {results['functional_recovery_error']:.2f}%")
 
-    cbo.observe(trial=trial, metric_value=results["dimensional_error"])
+    cbo.observe(
+        trial=trial,
+        metric_values={
+            "dimensional_error": results["dimensional_error"],
+            "flow_rate": results["flow_rate"],
+            "functional_recovery_error": results["functional_recovery_error"],
+        }
+    )
 
 
 # returns (bool, dict | None) to pass warp deltas forward to next trial
@@ -527,7 +574,9 @@ def run_real_trial(
         deltas = generate_random_deltas()
         delta_mode = "random"
 
-    print(f"  Generated deltas ({delta_mode}): L={deltas['length']:.2f}, W={deltas['width']:.2f}, H={deltas['height']:.2f} μm")
+    print(
+        f"  Generated deltas ({delta_mode}): L={deltas['length']:.2f}, W={deltas['width']:.2f}, H={deltas['height']:.2f} μm"
+    )
 
     params_with_deltas = {**suggested_params, **deltas}
 
@@ -537,7 +586,9 @@ def run_real_trial(
     trial_results = simulate_print_trial(suggested_params, delta_mode=delta_mode)
     print(f"  Dimensional Error: {trial_results['dimensional_error']:.4f}")
     print(f"  Flow Rate: {trial_results['flow_rate']:.4f} mL/min")
-    print(f"  Functional Recovery Error: {trial_results['functional_recovery_error']:.2f}%")
+    print(
+        f"  Functional Recovery Error: {trial_results['functional_recovery_error']:.2f}%"
+    )
 
     warp_deltas = {}
     for i in range(1, num_channels + 1):
@@ -611,13 +662,66 @@ def export_cad_model(params: dict, filename: str = "../cad_models/channels_fluid
 
 def visualize_convergence(cbo):
     """
-    Plot optimization convergence trace.
+    Plot optimization convergence trace for all metrics:
+    - Dimensional Error (primary)
+    - Flow Rate
+    - Functional Recovery Error
     """
-    trace = cbo.optimization_trace()
-    plt.plot(trace["trial_index"], trace["best_so_far"])
-    plt.title("CBO trial convergence")
-    plt.xlabel("Trial")
-    plt.ylabel("Best flow_rate_cv so far")
+    experiment = cbo.experiment
+    data = experiment.fetch_data()
+    if data is None or len(data.df) == 0:
+        print("No data to visualize.")
+        return
+
+    df = data.df
+
+    trial_indices = sorted(df["trial_index"].unique())
+    if len(trial_indices) == 0:
+        print("No trials to visualize.")
+        return
+
+    dimensional_errors = []
+    flow_rates = []
+    functional_errors = []
+
+    for tri_idx in trial_indices:
+        tri_df = df[df["trial_index"] == tri_idx]
+
+        de_row = tri_df[tri_df["metric_name"] == "dimensional_error"]
+        fr_row = tri_df[tri_df["metric_name"] == "flow_rate"]
+        fre_row = tri_df[tri_df["metric_name"] == "functional_recovery_error"]
+
+        dimensional_errors.append(de_row["mean"].iloc[0] if len(de_row) > 0 else 0.0)
+        flow_rates.append(fr_row["mean"].iloc[0] if len(fr_row) > 0 else 0.0)
+        functional_errors.append(fre_row["mean"].iloc[0] if len(fre_row) > 0 else 0.0)
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12))
+
+    axes[0].plot(trial_indices, dimensional_errors, "b-o", linewidth=2, markersize=6)
+    axes[0].set_title("Dimensional Error (MSE) - Primary Objective", fontsize=12)
+    axes[0].set_xlabel("Trial")
+    axes[0].set_ylabel("Dimensional Error (μm²)")
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].plot(trial_indices, flow_rates, "g-o", linewidth=2, markersize=6)
+    axes[1].axhline(
+        y=0.1387, color="r", linestyle="--", label="Baseline (0.1387 mL/min)"
+    )
+    axes[1].set_title("Flow Rate Over Trials", fontsize=12)
+    axes[1].set_xlabel("Trial")
+    axes[1].set_ylabel("Flow Rate (mL/min)")
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    axes[2].plot(trial_indices, functional_errors, "m-o", linewidth=2, markersize=6)
+    axes[2].axhline(y=5.0, color="r", linestyle="--", label="5% Threshold")
+    axes[2].set_title("Functional Recovery Error (% from baseline)", fontsize=12)
+    axes[2].set_xlabel("Trial")
+    axes[2].set_ylabel("Recovery Error (%)")
+    axes[2].legend()
+    axes[2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
     plt.show()
 
 
@@ -715,18 +819,22 @@ def main():
             raise ValueError("Invalid CAD option")
 
         if use_real_data:
-            completed, prev_warp, batch_id = run_real_trial(trial, context, sheet_name)
+            completed, prev_warp, batch_id, trial_results = run_real_trial(trial, context, sheet_name)
             if not completed:
                 return
             
-            if "Realistic" in sheet_name:
-                delta_mode = "realistic"
-            else:
-                delta_mode = "random"
-            trial_results = simulate_print_trial(trial.arms[0].parameters, delta_mode=delta_mode)
-            cbo.observe(trial=trial, metric_value=trial_results["dimensional_error"])
-            
-            print(f"\nBatch {batch_id} saved. CBO updated with dimensional_error: {trial_results['dimensional_error']:.4f}")
+            cbo.observe(
+                trial=trial,
+                metric_values={
+                    "dimensional_error": trial_results["dimensional_error"],
+                    "flow_rate": trial_results["flow_rate"],
+                    "functional_recovery_error": trial_results["functional_recovery_error"],
+                }
+            )
+
+            print(
+                f"\nBatch {batch_id} saved. CBO updated with dimensional_error: {trial_results['dimensional_error']:.4f}"
+            )
         else:
             run_fake_trial(cbo, trial, context)
             prev_warp = None

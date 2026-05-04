@@ -208,34 +208,47 @@ class ContextualBayesOptAx:
 
         return {"trial": trial, "params": arm.parameters}
 
-    def observe(self, trial, metric_value: float):
+    def observe(self, trial, metric_value: float = None, metric_values: dict = None):
         """
-        Record the observed metric for a trial and mark it completed
+        Record the observed metric(s) for a trial and mark it completed
 
         Args:
             trial : ax.core.trial.trial
                 Trial returned by suggest
             metric_value : float
-                Observed value of metric (e.g CV) for that trial
+                Observed value of primary metric (for backward compatibility)
+            metric_values : dict
+                Dict of metric_name -> value for multiple metrics
         """
         arm = trial.arms[0]
 
-        df = pd.DataFrame(
-            [
-                {
+        rows = []
+        
+        if metric_values:
+            for metric_name, value in metric_values.items():
+                rows.append({
                     "trial_index": trial.index,
                     "arm_name": arm.name,
-                    "metric_name": self.metric_name,
-                    "metric_signature": self.metric_name,
-                    "mean": float(metric_value),
+                    "metric_name": metric_name,
+                    "metric_signature": metric_name,
+                    "mean": float(value),
                     "sem": 0.0,
-                }
-            ]
-        )
-        data = Data(df=df)
-        self.experiment.attach_data(
-            data
-        )  # attach new output (cv) data to the experiment
+                })
+        elif metric_value is not None:
+            rows.append({
+                "trial_index": trial.index,
+                "arm_name": arm.name,
+                "metric_name": self.metric_name,
+                "metric_signature": self.metric_name,
+                "mean": float(metric_value),
+                "sem": 0.0,
+            })
+        
+        if rows:
+            df = pd.DataFrame(rows)
+            data = Data(df=df)
+            self.experiment.attach_data(data)
+        
         trial.mark_completed()
         print(f"Trial Status: {trial.status}")
 
