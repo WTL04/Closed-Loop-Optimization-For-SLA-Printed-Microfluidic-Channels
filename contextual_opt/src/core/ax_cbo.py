@@ -36,10 +36,11 @@ class ContextualBayesOptAx:
     def __init__(
         self,
         search_space: SearchSpace,
-        metric_name: str = "flow_rate_per_min",
+        metric_name: str = "dimensional_error",
         minimize: bool = True,
         generation_strategy: Optional[GenerationStrategy] = None,
         experiment_name: str = "cbo",
+        tracking_metrics: Optional[list[str]] = None,
     ):
         """
         Args:
@@ -53,11 +54,14 @@ class ContextualBayesOptAx:
                 Custom Ax generation strategy. If None, use Sobol + GPEI.
             experiment_name: str
                 Name for the Ax Experiment.
+            tracking_metrics: list[str], optional
+                List of metric names to track (logged but not used for optimization).
         """
 
         self.search_space = search_space
         self.metric_name = metric_name
         self.minimize = minimize
+        self.tracking_metrics = tracking_metrics or []
         self.runner = LabRunner()
 
         # initialize Ax experiment with objective configuration
@@ -71,6 +75,9 @@ class ContextualBayesOptAx:
             ),
             runner=self.runner,
         )
+
+        for tm in self.tracking_metrics:
+            self.experiment.add_tracking_metric(Metric(name=tm))
 
         # GenerationStrategy: Sobol warmup -> BoTorch modular GP BO
         if generation_strategy is None:
