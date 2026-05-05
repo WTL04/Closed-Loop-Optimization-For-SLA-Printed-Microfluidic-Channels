@@ -20,9 +20,9 @@ from ax.core import (
 
 from contextual_opt.src.core.ax_cbo import ContextualBayesOptAx
 from contextual_opt.src.pipeline.config import (
-    CHANNEL_LENGTH_BOUNDS,
-    CHANNEL_WIDTH_BOUNDS,
-    CHANNEL_HEIGHT_BOUNDS,
+    CHANNEL_LENGTH_UM_BOUNDS,
+    CHANNEL_WIDTH_UM_BOUNDS,
+    CHANNEL_HEIGHT_UM_BOUNDS,
     NOMINAL_DIMENSIONS,
 )
 from contextual_opt.src.api.sheets_api import get_latest_col_value, append_row
@@ -42,41 +42,40 @@ def build_search_space(num_channels: int = 1):
     """Build search space for SINGLE channel optimization."""
     parameters = []
 
-    parameters.append(
-        ChoiceParameter(
-            name="layer_thickness_um",
-            parameter_type=ParameterType.INT,
-            values=[50, 100],
-            is_ordered=True,
-            sort_values=True,
-        )
-    )
-
+    # Geometric knobs - pre-distortion targets to optimize (in µm)
     parameters.extend(
         [
             RangeParameter(
-                name="channel_length_mm",
+                name="channel_length_um",
                 parameter_type=ParameterType.FLOAT,
-                lower=CHANNEL_LENGTH_BOUNDS[0],
-                upper=CHANNEL_LENGTH_BOUNDS[1],
+                lower=CHANNEL_LENGTH_UM_BOUNDS[0],
+                upper=CHANNEL_LENGTH_UM_BOUNDS[1],
             ),
             RangeParameter(
-                name="channel_width_mm",
+                name="channel_width_um",
                 parameter_type=ParameterType.FLOAT,
-                lower=CHANNEL_WIDTH_BOUNDS[0],
-                upper=CHANNEL_WIDTH_BOUNDS[1],
+                lower=CHANNEL_WIDTH_UM_BOUNDS[0],
+                upper=CHANNEL_WIDTH_UM_BOUNDS[1],
             ),
             RangeParameter(
-                name="channel_height_mm",
+                name="channel_height_um",
                 parameter_type=ParameterType.FLOAT,
-                lower=CHANNEL_HEIGHT_BOUNDS[0],
-                upper=CHANNEL_HEIGHT_BOUNDS[1],
+                lower=CHANNEL_HEIGHT_UM_BOUNDS[0],
+                upper=CHANNEL_HEIGHT_UM_BOUNDS[1],
             ),
         ]
     )
 
+    # Context parameters - registered in search space for surrogate indexing
+    # Passed via c_t in suggest(), values fixed at suggestion time
     parameters.extend(
         [
+            RangeParameter(
+                name="layer_thickness_um",
+                parameter_type=ParameterType.FLOAT,
+                lower=50.0,
+                upper=100.0,
+            ),
             RangeParameter(
                 name="ambient_temp",
                 parameter_type=ParameterType.FLOAT,
@@ -98,29 +97,8 @@ def build_search_space(num_channels: int = 1):
         ]
     )
 
-    # TODO: change range to 0-20 um
-    parameters.extend(
-        [
-            RangeParameter(
-                name="delta_length_um",
-                parameter_type=ParameterType.FLOAT,
-                lower=-0.3,
-                upper=0.3,
-            ),
-            RangeParameter(
-                name="delta_width_um",
-                parameter_type=ParameterType.FLOAT,
-                lower=-0.3,
-                upper=0.3,
-            ),
-            RangeParameter(
-                name="delta_height_um",
-                parameter_type=ParameterType.FLOAT,
-                lower=-0.3,
-                upper=0.3,
-            ),
-        ]
-    )
+    # NOTE: delta_*_um are outputs (manufacturing errors), not knobs
+    # They are measured after fabrication and used in dim_error calculation
 
     return SearchSpace(parameters=parameters)
 
@@ -128,9 +106,9 @@ def build_search_space(num_channels: int = 1):
 def print_suggested_params(suggested_params: dict):
     """Print suggested parameters in readable format."""
     print("\n=== Suggested Parameters ===")
-    print(f"Length: {suggested_params.get('length', 'N/A'):.4f} mm")
-    print(f"Width: {suggested_params.get('width', 'N/A'):.4f} mm")
-    print(f"Height: {suggested_params.get('height', 'N/A'):.4f} mm")
+    print(f"Length: {suggested_params.get('channel_length_um', 'N/A'):.1f} µm")
+    print(f"Width: {suggested_params.get('channel_width_um', 'N/A'):.1f} µm")
+    print(f"Height: {suggested_params.get('channel_height_um', 'N/A'):.1f} µm")
     print(f"Layer Thickness: {suggested_params.get('layer_thickness_um', 'N/A')} µm")
 
 
@@ -166,31 +144,30 @@ def run_single_channel(
 
     Uses exact column names from dataset:
     batch_id, channel, layer_thickness_um, ambient_temp, resin_temp, resin_age,
-    channel_length_mm, channel_width_mm, channel_height_mm,
+    channel_length_um, channel_width_um, channel_height_um,
     delta_length_um, delta_width_um, delta_height_um,
     dim_error, flow_rate
     """
-    channel_context = {**context, "channel": channel_num}
+    channel_context = dict(context)
 
     result = cbo.suggest(isOnline=True, c_t=channel_context)
     trial = result["trial"]
     suggested_params = trial.arms[0].parameters
 
-    # Map to exact column names from dataset (with _mm suffix)
-    channel_length_mm = suggested_params.get(
-        "channel_length_mm", NOMINAL_DIMENSIONS["length"]
+    channel_length_um = suggested_params.get(
+        "channel_length_um", NOMINAL_DIMENSIONS["length"]
     )
-    channel_width_mm = suggested_params.get(
-        "channel_width_mm", NOMINAL_DIMENSIONS["width"]
+    channel_width_um = suggested_params.get(
+        "channel_width_um", NOMINAL_DIMENSIONS["width"]
     )
-    channel_height_mm = suggested_params.get(
-        "channel_height_mm", NOMINAL_DIMENSIONS["height"]
+    channel_height_um = suggested_params.get(
+        "channel_height_um", NOMINAL_DIMENSIONS["height"]
     )
 
     print(f"\n=== Channel {channel_num} ===")
-    print(f"Length: {channel_length_mm:.4f} mm")
-    print(f"Width: {channel_width_mm:.4f} mm")
-    print(f"Height: {channel_height_mm:.4f} mm")
+    print(f"Length: {channel_length_um:.1f} µm")
+    print(f"Width: {channel_width_um:.1f} µm")
+    print(f"Height: {channel_height_um:.1f} µm")
     print(f"Layer Thickness: {suggested_params.get('layer_thickness_um', 'N/A')} µm")
 
     if not use_real_data:
@@ -198,11 +175,10 @@ def run_single_channel(
         flow_rate = np.random.uniform(0.1, 0.2)
         deltas = generate_random_deltas()
         channel_results = {
-            "batch_id": channel_num,
             "channel": channel_num,
-            "channel_length_mm": channel_length_mm,
-            "channel_width_mm": channel_width_mm,
-            "channel_height_mm": channel_height_mm,
+            "channel_length_um": channel_length_um,
+            "channel_width_um": channel_width_um,
+            "channel_height_um": channel_height_um,
             "delta_length_um": deltas["length"],
             "delta_width_um": deltas["width"],
             "delta_height_um": deltas["height"],
@@ -223,11 +199,10 @@ def run_single_channel(
         flow_rate_ml = flow_rate_m3s * 1e6 * 60
 
         channel_results = {
-            "batch_id": channel_num,
             "channel": channel_num,
-            "channel_length_mm": channel_length_mm,
-            "channel_width_mm": channel_width_mm,
-            "channel_height_mm": channel_height_mm,
+            "channel_length_um": channel_length_um,
+            "channel_width_um": channel_width_um,
+            "channel_height_um": channel_height_um,
             "delta_length_um": deltas["length"],
             "delta_width_um": deltas["width"],
             "delta_height_um": deltas["height"],
@@ -241,7 +216,13 @@ def run_single_channel(
     channel_results["dim_error"] = dim_error
 
     # Observe result for CBO
-    cbo.observe(trial=trial, metric_value=dim_error)
+    cbo.observe(
+        trial=trial,
+        metric_values={
+            "dim_error": dim_error,
+            "flow_rate": channel_results["flow_rate"],
+        },
+    )
 
     return channel_results
 
@@ -254,16 +235,17 @@ def append_single_to_sheets(channel_results: dict, context: dict, sheet_name: st
     row_data = {
         "batch_id": batch_id,
         "channel": channel_results.get("channel", 1),
-        "layer_thickness_um": 100,
+        "layer_thickness_um": context.get("layer_thickness_um", 100),
         "ambient_temp": context.get("ambient_temp", 80.0),
         "resin_temp": context.get("resin_temp", 80.0),
         "resin_age": context.get("resin_age", 15.0),
-        "channel_length_mm": channel_results["channel_length_mm"],
-        "channel_width_mm": channel_results["channel_width_mm"],
-        "channel_height_mm": channel_results["channel_height_mm"],
+        "channel_length_um": channel_results["channel_length_um"],
+        "channel_width_um": channel_results["channel_width_um"],
+        "channel_height_um": channel_results["channel_height_um"],
         "delta_length_um": channel_results["delta_length_um"],
         "delta_width_um": channel_results["delta_width_um"],
         "delta_height_um": channel_results["delta_height_um"],
+        "dim_error": channel_results["dim_error"],
         "flow_rate": channel_results["flow_rate"],
     }
     append_row(batch_id, row_data, context, sheet_name=sheet_name)
@@ -294,19 +276,21 @@ def main():
             search_space=build_search_space(),
             metric_name="dim_error",
             minimize=True,
+            tracking_metrics=["flow_rate"],
         )
 
         # Load data and filter for this channel
-        use_real_data, df_full = load_data_source(
+        is_testing, df_full = load_data_source(
             sheet_name=sheet_name, is_testing=(data_choice == "2")
         )
+        use_real_data = not is_testing  # real data when not testing
         df_channel = extract_channel_data(df_full, channel_num)
         cbo.add_historical(df_channel)
         print(f"Loaded {len(df_channel)} rows for channel {channel_num}")
 
         # Run CBO for ONE channel
         result = run_single_channel(
-            cbo, context, sheet_name, channel_num, use_real_data=(data_choice == "1")
+            cbo, context, sheet_name, channel_num, use_real_data=use_real_data
         )
 
         # Append result to sheets
