@@ -10,9 +10,10 @@ Submodules:
 - run: Main orchestration (run.py)
 - config: Configuration constants
 """
+
 from .config import *
 
-from .computation import (
+from .metrics import (
     compute_flow_rate_cv,
     compute_dimensional_error,
     calculate_functional_recovery,
@@ -29,14 +30,12 @@ from .delta_loaders import (
     generate_realistic_deltas,
 )
 
-from .trial_runs import (
+from .cfd_runs import (
     run_cfd_simulation,
-    simulate_print_trial,
-    run_fake_trial,
-    run_real_trial,
 )
 
 from .cad_model import (
     build_cad_model,
     export_cad_model,
 )
+

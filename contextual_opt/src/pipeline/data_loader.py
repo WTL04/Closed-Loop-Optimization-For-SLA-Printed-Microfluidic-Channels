@@ -11,7 +11,7 @@ import pandas as pd
 
 from contextual_opt.src.pipeline.config import NOMINAL_DIMENSIONS
 from contextual_opt.src.api.sheets_api import pullData
-from contextual_opt.src.pipeline.computation import compute_dimensional_error
+from contextual_opt.src.pipeline.metrics import compute_dimensional_error
 
 
 def load_dataset(
@@ -51,14 +51,14 @@ def load_dataset(
         df["dim_error"] = df.apply(
             lambda row: compute_dimensional_error(
                 {
-                    "channel_length_mm": row.get(
-                        "channel_length_mm", NOMINAL_DIMENSIONS["length"]
+                    "channel_length_um": row.get(
+                        "channel_length_um", NOMINAL_DIMENSIONS["length"]
                     ),
-                    "channel_width_mm": row.get(
-                        "channel_width_mm", NOMINAL_DIMENSIONS["width"]
+                    "channel_width_um": row.get(
+                        "channel_width_um", NOMINAL_DIMENSIONS["width"]
                     ),
-                    "channel_height_mm": row.get(
-                        "channel_height_mm", NOMINAL_DIMENSIONS["height"]
+                    "channel_height_um": row.get(
+                        "channel_height_um", NOMINAL_DIMENSIONS["height"]
                     ),
                     "delta_length_um": row.get("delta_length_um", 0.0) or 0.0,
                     "delta_width_um": row.get("delta_width_um", 0.0) or 0.0,
