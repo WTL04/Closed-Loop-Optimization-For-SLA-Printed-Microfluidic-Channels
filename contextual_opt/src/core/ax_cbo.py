@@ -36,10 +36,11 @@ class ContextualBayesOptAx:
     def __init__(
         self,
         search_space: SearchSpace,
-        metric_name: str = "flow_rate_per_min",
+        metric_name: str = "dimensional_error",
         minimize: bool = True,
         generation_strategy: Optional[GenerationStrategy] = None,
         experiment_name: str = "cbo",
+        tracking_metrics: Optional[list[str]] = None,
     ):
         """
         Args:
@@ -53,11 +54,14 @@ class ContextualBayesOptAx:
                 Custom Ax generation strategy. If None, use Sobol + GPEI.
             experiment_name: str
                 Name for the Ax Experiment.
+            tracking_metrics: list[str], optional
+                List of metric names to track (logged but not used for optimization).
         """
 
         self.search_space = search_space
         self.metric_name = metric_name
         self.minimize = minimize
+        self.tracking_metrics = tracking_metrics or []
         self.runner = LabRunner()
 
         # initialize Ax experiment with objective configuration
@@ -71,6 +75,9 @@ class ContextualBayesOptAx:
             ),
             runner=self.runner,
         )
+
+        for tm in self.tracking_metrics:
+            self.experiment.add_tracking_metric(Metric(name=tm))
 
         # GenerationStrategy: Sobol warmup -> BoTorch modular GP BO
         if generation_strategy is None:
@@ -131,8 +138,16 @@ class ContextualBayesOptAx:
                 p = self.search_space.parameters[name]
                 val = getattr(row, name)
 
+                # Handle empty strings or NaN
+                if (
+                    val == ""
+                    or val is None
+                    or (hasattr(val, "__float__") and pd.isna(val))
+                ):
+                    val = 0.0
+
                 if p.parameter_type is ParameterType.INT:
-                    params[name] = int(val)
+                    params[name] = int(float(val))
                 elif p.parameter_type is ParameterType.FLOAT:
                     params[name] = float(val)
                 else:
@@ -148,6 +163,14 @@ class ContextualBayesOptAx:
             trial.mark_running(no_runner_required=True)  # mark trial as running
 
             metric_val = getattr(row, self.metric_name)
+
+            # Handle empty or NaN metric values
+            if (
+                metric_val == ""
+                or metric_val is None
+                or (hasattr(metric_val, "__float__") and pd.isna(metric_val))
+            ):
+                metric_val = 0.0
 
             records.append(
                 {
@@ -201,20 +224,36 @@ class ContextualBayesOptAx:
 
         return {"trial": trial, "params": arm.parameters}
 
-    def observe(self, trial, metric_value: float):
+    def observe(self, trial, metric_value: float = None, metric_values: dict = None):
         """
-        Record the observed metric for a trial and mark it completed
+        Record the observed metric(s) for a trial and mark it completed
 
         Args:
             trial : ax.core.trial.trial
                 Trial returned by suggest
             metric_value : float
-                Observed value of metric (e.g CV) for that trial
+                Observed value of primary metric (for backward compatibility)
+            metric_values : dict
+                Dict of metric_name -> value for multiple metrics
         """
         arm = trial.arms[0]
 
-        df = pd.DataFrame(
-            [
+        rows = []
+
+        if metric_values:
+            for metric_name, value in metric_values.items():
+                rows.append(
+                    {
+                        "trial_index": trial.index,
+                        "arm_name": arm.name,
+                        "metric_name": metric_name,
+                        "metric_signature": metric_name,
+                        "mean": float(value),
+                        "sem": 0.0,
+                    }
+                )
+        elif metric_value is not None:
+            rows.append(
                 {
                     "trial_index": trial.index,
                     "arm_name": arm.name,
@@ -223,12 +262,13 @@ class ContextualBayesOptAx:
                     "mean": float(metric_value),
                     "sem": 0.0,
                 }
-            ]
-        )
-        data = Data(df=df)
-        self.experiment.attach_data(
-            data
-        )  # attach new output (cv) data to the experiment
+            )
+
+        if rows:
+            df = pd.DataFrame(rows)
+            data = Data(df=df)
+            self.experiment.attach_data(data)
+
         trial.mark_completed()
         print(f"Trial Status: {trial.status}")
 

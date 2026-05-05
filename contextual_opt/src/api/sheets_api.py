@@ -19,7 +19,9 @@ creds = Credentials.from_service_account_file(
 )
 
 
-def pullData(sheet_name: str = "Sheet1", verbose: bool = True):
+def pullData(
+    sheet_name: str = "Reformated - Experiment Realistic Deltas", verbose: bool = True
+):
     """
     Pulls data from google sheets from the cloud
 
