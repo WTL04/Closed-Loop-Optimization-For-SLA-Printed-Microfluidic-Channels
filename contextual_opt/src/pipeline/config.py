@@ -7,8 +7,8 @@ BASELINE_FLOW_RATE = 2.312215e-9  # m³/s - measured using openFOAM with no 0.0 
 
 # Channel dimension bounds in micrometers (pre-distortion: nominal to nominal + max expected delta)
 CHANNEL_LENGTH_UM_BOUNDS = (40000, 40060)  # µm (nominal + 60µm max delta)
-CHANNEL_WIDTH_UM_BOUNDS = (500, 515)       # µm (nominal + 15µm max delta)
-CHANNEL_HEIGHT_UM_BOUNDS = (500, 515)      # µm (nominal + 15µm max delta)
+CHANNEL_WIDTH_UM_BOUNDS = (500, 515)  # µm (nominal + 15µm max delta)
+CHANNEL_HEIGHT_UM_BOUNDS = (500, 515)  # µm (nominal + 15µm max delta)
 
 # Nominal target dimensions in micrometers (for error computation)
 NOMINAL_DIMENSIONS = {
@@ -16,6 +16,17 @@ NOMINAL_DIMENSIONS = {
     "width": 500,
     "height": 500,
 }
+
+# Temperature bounds in Fahrenheit
+AMBIENT_TEMP_BOUNDS = (60.0, 100.0)  # F
+RESIN_TEMP_BOUNDS = (60.0, 100.0)  # F
+
+# Resin age bounds in hours
+RESIN_AGE_BOUNDS = (0.0, 72.0)  # hours
+
+# Context overtime drift settings (in Fahrenheit)
+CONTEXT_DRIFT_MAX = 3.0  # max drift per channel trial
+CONTEXT_NOISE_MAX = 2.0  # max random noise
 
 # Base plate dimensions for CAD model
 BASE_LENGTH = 20.0  # mm (X direction)

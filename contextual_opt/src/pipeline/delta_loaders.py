@@ -20,9 +20,9 @@ def generate_random_deltas(mode: str = "uniform") -> dict:
         dict with length, width, height delta values in µm
     """
     return {
-        "length": np.random.uniform(0, 20),
-        "width": np.random.uniform(0, 20),
-        "height": np.random.uniform(0, 20),
+        "length": np.random.uniform(0, 19),
+        "width": np.random.uniform(0, 19),
+        "height": np.random.uniform(0, 19),
     }
 
 
@@ -41,4 +41,3 @@ def generate_realistic_deltas() -> dict:
         "width": np.random.normal(12, 7),
         "height": np.random.normal(10, 6),
     }
-
