@@ -37,7 +37,8 @@ def compute_flow_rate_cv(flow_rates: list[float]) -> float:
 
 def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) -> float:
     """
-    Compute MSE between the fabricated dimensions (Ax suggested) and the
+    Compute Normalized Mean Squared Error (NMSE)
+    between the fabricated dimensions (Ax suggested) and the
     nominal target dimensions (40000 x 500 x 500 µm).
 
     Uses exact column names from dataset:
@@ -49,12 +50,17 @@ def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) ->
         num_channels: Number of channels (default: NUM_CHANNELS from config)
 
     Returns:
-        Mean squared error in µm^2 (lower is better)
+        Normalized mean squared error in µm^2 (lower is better)
     """
-    # Use exact column names from dataset
-    length = params.get("channel_length_um", NOMINAL_DIMENSIONS["length"])
-    width = params.get("channel_width_um", NOMINAL_DIMENSIONS["width"])
-    height = params.get("channel_height_um", NOMINAL_DIMENSIONS["height"])
+
+    nominal_length = NOMINAL_DIMENSIONS["length"]
+    nominal_width = NOMINAL_DIMENSIONS["width"]
+    nominal_height = NOMINAL_DIMENSIONS["height"]
+
+    # get exact columns from dataset
+    length = params.get("channel_length_um", nominal_length)
+    width = params.get("channel_width_um", nominal_width)
+    height = params.get("channel_height_um", nominal_height)
     delta_length = params.get("delta_length_um", 0.0) or 0.0
     delta_width = params.get("delta_width_um", 0.0) or 0.0
     delta_height = params.get("delta_height_um", 0.0) or 0.0
@@ -74,11 +80,11 @@ def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) ->
     fabricated_width = float(width) - width_delta
     fabricated_height = float(height) - height_delta
 
-    # calculate MSE
+    # calculate NMSE
     squared_errors = [
-        (fabricated_length - NOMINAL_DIMENSIONS["length"]) ** 2,
-        (fabricated_width - NOMINAL_DIMENSIONS["width"]) ** 2,
-        (fabricated_height - NOMINAL_DIMENSIONS["height"]) ** 2,
+        ((fabricated_length - nominal_length) / nominal_length) ** 2,
+        ((fabricated_width - nominal_width) / nominal_width) ** 2,
+        ((fabricated_height - nominal_height) / nominal_height) ** 2,
     ]
 
     return float(np.mean(squared_errors)) if squared_errors else 0.0
@@ -96,4 +102,3 @@ def calculate_functional_recovery(extracted_flow_rate: float) -> float:
         Error percentage (0.0 = perfect recovery)
     """
     return abs(extracted_flow_rate - BASELINE_FLOW_RATE) / BASELINE_FLOW_RATE * 100.0
-
