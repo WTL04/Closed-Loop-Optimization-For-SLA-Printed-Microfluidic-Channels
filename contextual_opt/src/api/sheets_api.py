@@ -38,9 +38,7 @@ EXPECTED_HEADERS = [
 ]
 
 
-def pullData(
-    sheet_name: str = "Experiment Realistic Deltas", verbose: bool = True
-):
+def pullData(sheet_name: str = "Experiment Realistic Deltas", verbose: bool = True):
     """
     Pulls data from google sheets from the cloud
 
@@ -56,11 +54,11 @@ def pullData(
         sheet = client.open_by_key(SHEET_ID)
         worksheet = sheet.worksheet(sheet_name)
 
-    # Use expected_headers to handle duplicate/empty headers in sheet
-    data = worksheet.get_all_records(expected_headers=EXPECTED_HEADERS)
-    df = pd.DataFrame(data)
-    if verbose:
-        print(df)
+        # Use expected_headers to handle duplicate/empty headers in sheet
+        data = worksheet.get_all_records(expected_headers=EXPECTED_HEADERS)
+        df = pd.DataFrame(data)
+        if verbose:
+            print(df)
 
         return df
     except gspread.exceptions.SpreadsheetNotFound:
