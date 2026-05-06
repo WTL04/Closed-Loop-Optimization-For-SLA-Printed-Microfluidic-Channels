@@ -39,7 +39,7 @@ EXPECTED_HEADERS = [
 
 
 def pullData(
-    sheet_name: str = "Reformated - Experiment Realistic Deltas", verbose: bool = True
+    sheet_name: str = "Experiment Realistic Deltas", verbose: bool = True
 ):
     """
     Pulls data from google sheets from the cloud
