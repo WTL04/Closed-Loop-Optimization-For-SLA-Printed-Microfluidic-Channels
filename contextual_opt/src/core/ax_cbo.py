@@ -3,6 +3,7 @@ from typing import Optional
 
 from torch import ge
 from contextual_opt.src.core.lab_runner import LabRunner
+from botorch.acquisition import qLogNoisyExpectedImprovement
 
 from ax.core import (
     SearchSpace,
@@ -85,7 +86,11 @@ class ContextualBayesOptAx:
                 GeneratorSpec(
                     generator_enum=Generators.BOTORCH_MODULAR,
                     model_kwargs={},  # default surrogate
-                    model_gen_kwargs={},  # default candidate gen
+                    model_gen_kwargs={  # default acquisition_function (LNEI)
+                        "acquisition_function_kwargs": {
+                            "acqf_class": qLogNoisyExpectedImprovement
+                        }
+                    },
                 )
             ]
             bo_node = GenerationNode(

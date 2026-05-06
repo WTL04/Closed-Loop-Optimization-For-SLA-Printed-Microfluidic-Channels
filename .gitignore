@@ -10,12 +10,14 @@ __pycache__/
 *.pyo
 
 # OpenFOAM generated files
-cfd/channelCase/constant/polyMesh/
-cfd/channelCase/constant/extendedFeatureEdgeMesh/
+cfd/channelCase/constant/polyMesh/*
+cfd/channelCase/constant/extendedFeatureEdgeMesh/*
+cfd/channelCase/constant/triSurface/*
 cfd/channelCase/[1-9]*/
 cfd/channelCase/[0-9][0-9]*/
 cfd/channelCase/postProcessing/
 cfd/channelCase/case.foam
+flow_rate.txt
 
 # OS / editor
 .vscode/
