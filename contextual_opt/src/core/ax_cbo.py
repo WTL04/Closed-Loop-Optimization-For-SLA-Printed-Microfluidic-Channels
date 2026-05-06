@@ -199,7 +199,7 @@ class ContextualBayesOptAx:
         except Exception:
             return pd.DataFrame(columns=["trial_index", "mean", "best_so_far"])
 
-    def save(self, filepath: str):
+    def save(self, filepath: str, save_model: bool = True):
         """
         Save the Client state to JSON file.
 
@@ -207,12 +207,12 @@ class ContextualBayesOptAx:
         - Experiment configuration
         - All trial data (historical + new)
 
-        NOTE: Does NOT preserve surrogate model state (GP hyperparameters,
-        kernel parameters, or learned weights). Only experiment/trial history
-        is saved, allowing optimization to resume from where it stopped.
+        If save_model=True (default), also saves the surrogate model state
+        to a separate .pt file alongside the JSON.
 
         Args:
             filepath: Path to save the JSON file.
+            save_model: If True, also save surrogate model state to .pt file.
         """
         import os
 
@@ -223,15 +223,23 @@ class ContextualBayesOptAx:
         self.client.save_to_json_file(filepath)
         print(f"Saved Client state to {filepath}")
 
-    def load(self, filepath: str):
+        if save_model:
+            model_path = filepath.replace(".json", "_model.pt")
+            try:
+                self.save_surrogate_model(model_path)
+            except ValueError as e:
+                print(f"Note: Could not save model state ({e})")
+
+    def load(self, filepath: str, load_model: bool = True):
         """
         Load Client state from JSON file.
 
-        Loads experiment/trial data. Note that the surrogate model is
-        retrained on load, so model state is not preserved.
+        Loads experiment/trial data. If load_model=True (default), also
+        loads the surrogate model state from the corresponding .pt file.
 
         Args:
             filepath: Path to the JSON file.
+            load_model: If True, also load surrogate model state from .pt file.
 
         Returns:
             self (for chaining)
@@ -244,6 +252,14 @@ class ContextualBayesOptAx:
         self.client = Client.load_from_json_file(filepath)
         self.experiment = self.client._experiment
         print(f"Loaded Client state from {filepath}")
+
+        if load_model:
+            model_path = filepath.replace(".json", "_model.pt")
+            if os.path.exists(model_path):
+                try:
+                    self.load_surrogate_model(model_path)
+                except Exception as e:
+                    print(f"Note: Could not load model state: {e}")
 
         return self
 
