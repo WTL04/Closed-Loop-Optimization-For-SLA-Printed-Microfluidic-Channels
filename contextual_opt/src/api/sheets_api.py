@@ -19,6 +19,25 @@ creds = Credentials.from_service_account_file(
 )
 
 
+# Expected headers matching the dataset schema
+EXPECTED_HEADERS = [
+    "batch_id",
+    "channel",
+    "layer_thickness_um",
+    "ambient_temp",
+    "resin_temp",
+    "resin_age",
+    "channel_length_um",
+    "channel_width_um",
+    "channel_height_um",
+    "delta_length_um",
+    "delta_width_um",
+    "delta_height_um",
+    "dim_error",
+    "flow_rate",
+]
+
+
 def pullData(
     sheet_name: str = "Reformated - Experiment Realistic Deltas", verbose: bool = True
 ):
@@ -36,7 +55,8 @@ def pullData(
     sheet = client.open_by_key(SHEET_ID)
     worksheet = sheet.worksheet(sheet_name)
 
-    data = worksheet.get_all_records()  # list of dicts
+    # Use expected_headers to handle duplicate/empty headers in sheet
+    data = worksheet.get_all_records(expected_headers=EXPECTED_HEADERS)
     df = pd.DataFrame(data)
     if verbose:
         print(df)
