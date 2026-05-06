@@ -7,7 +7,7 @@ where dim_error is empty, and updates the sheet with computed values.
 
 Formula:
     fabricated = target - delta
-    dim_error = MSE(fabricated vs nominal) in um^2
+    dim_error = NMSE(fabricated vs nominal) in um^2
 
 Nominal dimensions: 40000 x 500 x 500 um
 """
@@ -42,16 +42,37 @@ NOMINAL_DIMENSIONS = {
 
 
 def compute_dimensional_error(params: dict) -> float:
-    """Compute MSE between fabricated dimensions and nominal targets in um."""
-    length = float(params.get("channel_length_um", NOMINAL_DIMENSIONS["length"]))
-    width = float(params.get("channel_width_um", NOMINAL_DIMENSIONS["width"]))
-    height = float(params.get("channel_height_um", NOMINAL_DIMENSIONS["height"]))
+    """
+    Compute Normalized Mean Squared Error (NMSE)
+    between the fabricated dimensions (Ax suggested) and the
+    nominal target dimensions (40000 x 500 x 500 µm).
 
+    Uses exact column names from dataset:
+    - channel_length_um, channel_width_um, channel_height_um (µm)
+    - delta_length_um, delta_width_um, delta_height_um (µm)
+
+    Args:
+        params: Dict with channel_length_um/channel_width_um/channel_height_um (µm) and delta_*_um (µm)
+        num_channels: Number of channels (default: NUM_CHANNELS from config)
+
+    Returns:
+        Normalized mean squared error in µm^2 (lower is better)
+    """
+
+    nominal_length = NOMINAL_DIMENSIONS["length"]
+    nominal_width = NOMINAL_DIMENSIONS["width"]
+    nominal_height = NOMINAL_DIMENSIONS["height"]
+
+    # get exact columns from dataset
+    length = params.get("channel_length_um", nominal_length)
+    width = params.get("channel_width_um", nominal_width)
+    height = params.get("channel_height_um", nominal_height)
     delta_length = params.get("delta_length_um", 0.0) or 0.0
     delta_width = params.get("delta_width_um", 0.0) or 0.0
     delta_height = params.get("delta_height_um", 0.0) or 0.0
 
     try:
+        # deltas are in µm
         length_delta = float(delta_length)
         width_delta = float(delta_width)
         height_delta = float(delta_height)
@@ -60,14 +81,16 @@ def compute_dimensional_error(params: dict) -> float:
         width_delta = 0.0
         height_delta = 0.0
 
-    fabricated_length = length - length_delta
-    fabricated_width = width - width_delta
-    fabricated_height = height - height_delta
+    # fabricated dimensions = ax suggested - random deltas
+    fabricated_length = float(length) - length_delta
+    fabricated_width = float(width) - width_delta
+    fabricated_height = float(height) - height_delta
 
+    # calculate NMSE
     squared_errors = [
-        (fabricated_length - NOMINAL_DIMENSIONS["length"]) ** 2,
-        (fabricated_width - NOMINAL_DIMENSIONS["width"]) ** 2,
-        (fabricated_height - NOMINAL_DIMENSIONS["height"]) ** 2,
+        ((fabricated_length - nominal_length) / nominal_length) ** 2,
+        ((fabricated_width - nominal_width) / nominal_width) ** 2,
+        ((fabricated_height - nominal_height) / nominal_height) ** 2,
     ]
 
     return float(np.mean(squared_errors)) if squared_errors else 0.0
@@ -110,17 +133,17 @@ def fill_google_sheet_dim_error(sheet_name: str = None):
         print("No empty dim_error values found.")
         return
 
-# Compute dim_error for each empty row and store
+    # Compute dim_error for each empty row and store
     headers = worksheet.row_values(1)
     dim_error_col_idx = headers.index("dim_error") + 1  # 1-based
-    
+
     updates = []  # Collect all updates as (row, col, value) tuples
-    
+
     for idx in rows_to_fill:
         row_num = idx + 2  # +2: +1 for header, +1 for 1-based index
-        
+
         row_data = df.iloc[idx]
-        
+
         # Build params dict for compute_dimensional_error
         params = {
             "channel_length_um": row_data.get("channel_length_um"),
@@ -130,33 +153,33 @@ def fill_google_sheet_dim_error(sheet_name: str = None):
             "delta_width_um": row_data.get("delta_width_um"),
             "delta_height_um": row_data.get("delta_height_um"),
         }
-        
+
         dim_error = compute_dimensional_error(params)
-        
+
         # Store as (row, col, value)
         updates.append((row_num, dim_error_col_idx, dim_error))
-    
+
     # Batch write all at once using update_cells
     # Format: rows, cols, values as list of lists
     if updates:
         # Sort by row number
         updates.sort(key=lambda x: x[0])
-        
+
         # Get unique rows and prepare data
         row_to_values = {}
         for row, col, value in updates:
             if row not in row_to_values:
                 row_to_values[row] = {}
             row_to_values[row][col] = value
-        
+
         # Update in batches of 50 rows to avoid quota issues
         batch_size = 50
         rows = sorted(row_to_values.keys())
         total_rows = len(rows)
-        
+
         for batch_start in range(0, total_rows, batch_size):
-            batch_rows = rows[batch_start:batch_start + batch_size]
-            
+            batch_rows = rows[batch_start : batch_start + batch_size]
+
             # Build cell list for batch
             cell_list = []
             for row in batch_rows:
@@ -165,11 +188,13 @@ def fill_google_sheet_dim_error(sheet_name: str = None):
                     cell = worksheet.cell(row, col)
                     cell.value = row_to_values[row][col]
                     cell_list.append(cell)
-            
+
             if cell_list:
                 worksheet.update_cells(cell_list)
-                print(f"  Batch {batch_start//batch_size + 1}: Updated rows {batch_start+1}-{min(batch_start+batch_size, total_rows)}")
-    
+                print(
+                    f"  Batch {batch_start // batch_size + 1}: Updated rows {batch_start + 1}-{min(batch_start + batch_size, total_rows)}"
+                )
+
     print(f"\nCompleted! Updated {len(updates)} rows.")
 
     # Show sample of results
@@ -198,4 +223,3 @@ if __name__ == "__main__":
 
     sheet_name = sys.argv[1] if len(sys.argv) > 1 else None
     fill_google_sheet_dim_error(sheet_name)
-
