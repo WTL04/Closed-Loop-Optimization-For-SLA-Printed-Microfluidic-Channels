@@ -85,7 +85,7 @@ def run_with_google_sheets(
 def run_with_testing(
     channel_num: int = None,
     context: dict = None,
-    sheet_name: str = "Reformated - Experiment Realistic Deltas",
+    sheet_name: str = "Experiment Realistic Deltas",
 ):
     """
     Run CBO using fake/testing data.
@@ -152,7 +152,7 @@ def run_with_testing(
 
 
 def run_batch_google_sheets(
-    sheet_name: str = "Reformated - Experiment Realistic Deltas",
+    sheet_name: str = "Experiment Realistic Deltas",
     num_batches: int = 1,
     temp: str = "hot",
     layer_thickness_um: int = 100,
@@ -267,10 +267,10 @@ if __name__ == "__main__":
     # single channel, google sheets
     if mode == "1":
         sheet_name = input(
-            "Enter Google Sheet name (default: Reformated - Experiment Realistic Deltas): "
+            "Enter Google Sheet name (default: Experiment Realistic Deltas): "
         ).strip()
         if not sheet_name:
-            sheet_name = "Reformated - Experiment Realistic Deltas"
+            sheet_name = "Experiment Realistic Deltas"
         channel_num_input = input("Channel number (press Enter for auto): ").strip()
         channel_num = int(channel_num_input) if channel_num_input else None
 
@@ -291,10 +291,10 @@ if __name__ == "__main__":
     # multiple batch, google sheets
     elif mode == "3":
         sheet_name = input(
-            "Enter Google Sheet name (default: Reformated - Experiment Realistic Deltas): "
+            "Enter Google Sheet name (default: Experiment Realistic Deltas): "
         ).strip()
         if not sheet_name:
-            sheet_name = "Reformated - Experiment Realistic Deltas"
+            sheet_name = "Experiment Realistic Deltas"
 
         num_batches_input = input("Number of batches (default: 1): ").strip()
         num_batches = int(num_batches_input) if num_batches_input else 1
