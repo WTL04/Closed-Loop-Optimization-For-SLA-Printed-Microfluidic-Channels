@@ -7,8 +7,8 @@ set -e
 echo '--- Step 1: CAD Generation ---'
 cd /case
 
-if [ -n "15.086770013834853" ] && [ -n "10.738268512131722" ] && [ -n "7.471734253723671" ]; then
-    python contextual_opt/src/cad/single_channel_inlet_outlet_cfd_export.py         15.086770013834853 10.738268512131722 7.471734253723671
+if [ -n "11.99226173367431" ] && [ -n "5.322404196028233" ] && [ -n "7.925774478634021" ]; then
+    python contextual_opt/src/cad/single_channel_inlet_outlet_cfd_export.py         11.99226173367431 5.322404196028233 7.925774478634021
 else
     python contextual_opt/src/cad/single_channel_inlet_outlet_cfd_export.py
 fi

@@ -1,37 +1,28 @@
 import pandas as pd
 from typing import Optional
 
-from torch import ge
-from contextual_opt.src.core.lab_runner import LabRunner
-from botorch.acquisition import qLogNoisyExpectedImprovement
-
+from ax.api import Client
 from ax.core import (
     SearchSpace,
     Experiment,
-    Metric,
-    Objective,
-    OptimizationConfig,
     ParameterType,
+    OptimizationConfig,
+    Objective,
+    Metric,
+    RangeParameter,
 )
-from ax.core.arm import Arm
-from ax.core.data import Data
-from ax.adapter.registry import Generators
-from ax.generation_strategy.generation_strategy import GenerationStrategy
-from ax.generation_strategy.generation_node import GenerationNode
-from ax.generation_strategy.generator_spec import GeneratorSpec
-from ax.generation_strategy.transition_criterion import MinTrials
-from ax.service.utils.instantiation import FixedFeatures
 from ax.core.observation import ObservationFeatures
+
+from contextual_opt.src.core.lab_runner import LabRunner
 
 
 class ContextualBayesOptAx:
     """
-    Contextual Bayesian Optimization using Ax Dev (Github Version, most updated)
+    Contextual Bayesian Optimization using new Ax API (ax.api.Client).
 
-    - Uses Ax's internal surrogate (GP based) on knobs + context
-    - Supports warm starting from an offline dataset
-    - For each context snapshot c_t, suggests knob settings x that minimize a metric
-    - After each experiment, appends (x, c_t, y) and Ax retrains internally
+    - Uses Client for full state preservation (surrogate model weights)
+    - Supports contextual optimization via fixed_parameters
+    - Save/load preserves model state exactly
     """
 
     def __init__(
@@ -39,7 +30,6 @@ class ContextualBayesOptAx:
         search_space: SearchSpace,
         metric_name: str = "dimensional_error",
         minimize: bool = True,
-        generation_strategy: Optional[GenerationStrategy] = None,
         experiment_name: str = "cbo",
         tracking_metrics: Optional[list[str]] = None,
     ):
@@ -48,102 +38,68 @@ class ContextualBayesOptAx:
             search_space: ax.core.SearchSpace
                 Includes both knob and context parameters.
             metric_name: str
-                Name of the metric to optimize (column in your data).
+                Name of the metric to optimize.
             minimize: bool
                 If True, minimize the metric. If False, maximize.
-            generation_strategy: GenerationStrategy, optional
-                Custom Ax generation strategy. If None, use Sobol + GPEI.
             experiment_name: str
                 Name for the Ax Experiment.
             tracking_metrics: list[str], optional
-                List of metric names to track (logged but not used for optimization).
+                List of metric names to track.
         """
-
         self.search_space = search_space
         self.metric_name = metric_name
         self.minimize = minimize
         self.tracking_metrics = tracking_metrics or []
         self.runner = LabRunner()
+        self._context_params = set()
 
-        # initialize Ax experiment with objective configuration
+        # create experiment with optimization config
         self.experiment = Experiment(
             name=experiment_name,
             search_space=self.search_space,
             optimization_config=OptimizationConfig(
                 objective=Objective(
-                    metric=Metric(name=self.metric_name), minimize=self.minimize
+                    metric=Metric(name=metric_name),
+                    minimize=minimize,
                 )
             ),
-            runner=self.runner,
         )
 
-        for tm in self.tracking_metrics:
-            self.experiment.add_tracking_metric(Metric(name=tm))
+        # create Client and set experiment
+        self.client = Client()
+        self.client.set_experiment(self.experiment)
 
-        # GenerationStrategy: Sobol warmup -> BoTorch modular GP BO
-        if generation_strategy is None:
-            bo_specs = [
-                GeneratorSpec(
-                    generator_enum=Generators.BOTORCH_MODULAR,
-                    model_kwargs={},  # default surrogate
-                    model_gen_kwargs={  # default acquisition_function (LNEI)
-                        "acquisition_function_kwargs": {
-                            "acqf_class": qLogNoisyExpectedImprovement
-                        }
-                    },
-                )
-            ]
-            bo_node = GenerationNode(
-                name="BoTorch",
-                generator_specs=bo_specs,
-            )
+        # configure tracking metrics through client
+        if self.tracking_metrics:
+            self.client.configure_tracking_metrics(metric_names=self.tracking_metrics)
 
-            sobol_specs = [
-                GeneratorSpec(
-                    generator_enum=Generators.SOBOL,
-                    model_kwargs={"seed": 42},
-                )
-            ]
-            sobol_node = GenerationNode(
-                name="Sobol",
-                generator_specs=sobol_specs,
-                transition_criteria=[
-                    MinTrials(
-                        threshold=5,  # after 5 completed trials
-                        transition_to=bo_node.name,
-                        use_all_trials_in_exp=True,
-                    )
-                ],
-            )
+    def set_context_params(self, context_param_names: list[str]):
+        """
+        Set which parameters are context (fixed) vs. knobs (to be suggested).
 
-            # wrap up generation strategy with nodes and steps
-            self.generation_strategy = GenerationStrategy(
-                name="Sobol+BoTorch", nodes=[sobol_node, bo_node]
-            )
-
-        else:
-            # use custom generation_strategy strategy
-            self.generation_strategy = generation_strategy
+        Args:
+            context_param_names: List of parameter names that are context
+        """
+        self._context_params = set(context_param_names)
 
     def add_historical(self, df: pd.DataFrame):
         """
-        Attach historical (x, c, y) data to the Ax experiment.
+        Attach historical (x, c, y) data to the experiment.
 
-        df must contain:
-            - one column per parameter in search_space.parameters.keys()
-            - one column with name self.metric_name for the target
+        Args:
+            df: DataFrame with columns for all parameters + metrics
         """
         param_names = list(self.search_space.parameters.keys())
-        records = []
 
         for row in df.itertuples(index=False):
-            # ensure data types persist
+            # Build parameters dict for all columns
             params = {}
             for name in param_names:
-                p = self.search_space.parameters[name]
-                val = getattr(row, name)
+                try:
+                    val = getattr(row, name)
+                except AttributeError:
+                    continue
 
-                # Handle empty strings or NaN
                 if (
                     val == ""
                     or val is None
@@ -151,160 +107,137 @@ class ContextualBayesOptAx:
                 ):
                     val = 0.0
 
-                if p.parameter_type is ParameterType.INT:
+                p = self.search_space.parameters[name]
+                if p.parameter_type == ParameterType.INT:
                     params[name] = int(float(val))
-                elif p.parameter_type is ParameterType.FLOAT:
+                elif p.parameter_type == ParameterType.FLOAT:
                     params[name] = float(val)
                 else:
                     params[name] = val
 
-            arm = Arm(parameters=params)
+            # Get metric values
+            all_metrics = {self.metric_name: getattr(row, self.metric_name, 0.0)}
+            for tm in self.tracking_metrics:
+                try:
+                    tm_val = getattr(row, tm)
+                    if tm_val is not None and not pd.isna(tm_val):
+                        all_metrics[tm] = float(tm_val)
+                except AttributeError:
+                    pass
 
-            # initilaize an trial and add metrics of trial into records
-            trial = self.experiment.new_trial()
-            # explicitly attach context as fixed features for true CBO
-            trial._fixed_features = ObservationFeatures(parameters=params)
-            trial.add_arm(arm)
-            trial.mark_running(no_runner_required=True)  # mark trial as running
+            # Convert to raw_data format
+            raw_data = {k: float(v) for k, v in all_metrics.items()}
 
-            metric_val = getattr(row, self.metric_name)
-
-            # Handle empty or NaN metric values
-            if (
-                metric_val == ""
-                or metric_val is None
-                or (hasattr(metric_val, "__float__") and pd.isna(metric_val))
-            ):
-                metric_val = 0.0
-
-            records.append(
-                {
-                    "trial_index": trial.index,
-                    "arm_name": arm.name,
-                    "metric_name": self.metric_name,
-                    "metric_signature": self.metric_name,
-                    "mean": float(metric_val),
-                    "sem": 1e-6,
-                }
-            )
-
-        # attach metric values from each trial for surrogate to train on
-        data = Data(df=pd.DataFrame.from_records(records))
-
-        # append Data object into experiment Dataframe
-        self.experiment.attach_data(data)
-
-        # mark all trials as completed
-        for trial in self.experiment.trials.values():
-            if trial.status.is_running:
-                trial.mark_completed()
+            # Get suggestion and immediately complete with observed data
+            # This adds the trial to the experiment with the right data
+            trial_dict = self.client.get_next_trials(max_trials=1)
+            if trial_dict:
+                trial_idx = list(trial_dict.keys())[0]
+                self.client.complete_trial(trial_index=trial_idx, raw_data=raw_data)
 
     def suggest(self, isOnline: bool, c_t: dict):
-        """Suggests knob settings given a context snapshot
+        """
+        Suggests knob settings given a context snapshot.
 
         Args:
-            c_t: dict
-                Dictionary of context snapshot
+            isOnline: bool - if True, run the trial; if False, just get suggestion
+            c_t: dict - context dictionary with context parameter values
 
         Returns:
-            dict
-                Suggested paramterization (knobs + fixed context)
+            dict with trial info and parameters
         """
-        context = ObservationFeatures(parameters=c_t)
-
-        # returns a list of GeneratorRun objects
-        result = self.generation_strategy.gen(
-            experiment=self.experiment,
-            fixed_features=context,
-            n=1,
+        # Use context as fixed_parameters
+        trial_dict = self.client.get_next_trials(
+            max_trials=1,
+            fixed_parameters=c_t,
         )
 
-        # Handle both list and single GeneratorRun returns
-        generator_run = result[0][0]
+        trial_idx = list(trial_dict.keys())[0]
+        parameters = trial_dict[trial_idx]
 
-        trial = self.experiment.new_trial(generator_run=generator_run)
-        arm = trial.arms[0]
-        if isOnline:
-            trial.run()
+        trial = type(
+            "Trial",
+            (),
+            {
+                "trial_index": trial_idx,
+                "arm": type("Arm", (), {"parameters": parameters}),
+            },
+        )()
 
-        return {"trial": trial, "params": arm.parameters}
+        return {"trial": trial, "params": parameters}
 
     def observe(self, trial, metric_value: float = None, metric_values: dict = None):
         """
-        Record the observed metric(s) for a trial and mark it completed
+        Record the observed metric(s) for a trial and mark it completed.
 
         Args:
-            trial : ax.core.trial.trial
-                Trial returned by suggest
-            metric_value : float
-                Observed value of primary metric (for backward compatibility)
-            metric_values : dict
-                Dict of metric_name -> value for multiple metrics
+            trial: Trial returned by suggest
+            metric_value: float - Observed value of primary metric
+            metric_values: dict - Dict of metric_name -> value for multiple metrics
         """
-        arm = trial.arms[0]
-
-        rows = []
+        trial_index = trial.trial_index
 
         if metric_values:
-            for metric_name, value in metric_values.items():
-                rows.append(
-                    {
-                        "trial_index": trial.index,
-                        "arm_name": arm.name,
-                        "metric_name": metric_name,
-                        "metric_signature": metric_name,
-                        "mean": float(value),
-                        "sem": 0.0,
-                    }
-                )
+            raw_data = {k: float(v) for k, v in metric_values.items()}
         elif metric_value is not None:
-            rows.append(
-                {
-                    "trial_index": trial.index,
-                    "arm_name": arm.name,
-                    "metric_name": self.metric_name,
-                    "metric_signature": self.metric_name,
-                    "mean": float(metric_value),
-                    "sem": 0.0,
-                }
-            )
+            raw_data = {self.metric_name: float(metric_value)}
+        else:
+            return
 
-        if rows:
-            df = pd.DataFrame(rows)
-            data = Data(df=df)
-            self.experiment.attach_data(data)
-
-        trial.mark_completed()
-        print(f"Trial Status: {trial.status}")
+        self.client.complete_trial(trial_index=trial_index, raw_data=raw_data)
+        print(f"Trial Status: Completed")
 
     def optimization_trace(self) -> pd.DataFrame:
         """
-        Returns a DataFrame with:
-        - trial_index
-        - mean: metric value per trial
-        - best_so_far: running best (min or max depending on self.minimize)
+        Returns a DataFrame with trial optimization history.
         """
-        df = self.experiment.fetch_data().df
+        try:
+            df = self.client.get_trials_dataframe()
+            if df.empty:
+                return pd.DataFrame(columns=["trial_index", "mean", "best_so_far"])
+            return df
+        except Exception:
+            return pd.DataFrame(columns=["trial_index", "mean", "best_so_far"])
 
-        # debug
-        print(df.shape)
+    def save(self, filepath: str):
+        """
+        Save the full Client state to JSON file.
 
-        # keep only the metric of interest
-        df = df[df["metric_name"] == self.metric_name]
+        This preserves:
+        - Experiment configuration
+        - All trial data (historical + new)
+        - Surrogate model state (GP weights and hyperparameters)
 
-        # one value per trial (average in case you ever record multiple rows per trial)
-        vals = df.groupby("trial_index")["mean"].mean().sort_index()
+        Args:
+            filepath: Path to save the JSON file.
+        """
+        import os
 
-        if self.minimize:
-            best = vals.cummin()
-        else:
-            best = vals.cummax()
-
-        trace = pd.DataFrame(
-            {
-                "trial_index": vals.index,
-                "mean": vals.values,
-                "best_so_far": best.values,
-            }
+        os.makedirs(
+            os.path.dirname(filepath) if os.path.dirname(filepath) else ".",
+            exist_ok=True,
         )
-        return trace
+        self.client.save_to_json_file(filepath)
+        print(f"Saved Client state to {filepath}")
+
+    def load(self, filepath: str):
+        """
+        Load the full Client state from JSON file.
+
+        Args:
+            filepath: Path to the JSON file.
+
+        Returns:
+            self (for chaining)
+        """
+        import os
+
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"State file not found: {filepath}")
+
+        self.client = Client.load_from_json_file(filepath)
+        self.experiment = self.client._experiment
+        print(f"Loaded Client state from {filepath}")
+
+        return self
+

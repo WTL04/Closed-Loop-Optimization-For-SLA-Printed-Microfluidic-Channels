@@ -40,7 +40,7 @@ def run_single_channel(
 
     result = cbo.suggest(isOnline=True, c_t=channel_context)
     trial = result["trial"]
-    suggested_params = trial.arms[0].parameters
+    suggested_params = trial.arm.parameters
 
     channel_length_um = suggested_params.get(
         "channel_length_um", NOMINAL_DIMENSIONS["length"]

@@ -18,6 +18,7 @@ from contextual_opt.src.pipeline.search_space import build_search_space
 from contextual_opt.src.pipeline.context import get_context_snapshot, context_overtime
 from contextual_opt.src.pipeline.runner import run_single_channel
 from contextual_opt.src.pipeline.utils import append_single_to_sheets
+import os
 
 
 def run_with_google_sheets(
@@ -25,6 +26,7 @@ def run_with_google_sheets(
     channel_num: int = None,
     context: dict = None,
     append_to_sheets: bool = True,
+    cbo=None,
 ):
     """
     Run CBO using data from Google Sheets.
@@ -49,13 +51,14 @@ def run_with_google_sheets(
     if context is None:
         context = get_context_snapshot()
 
-    # initialize cbo
-    cbo = ContextualBayesOptAx(
-        search_space=build_search_space(),
-        metric_name="dim_error",
-        minimize=True,
-        tracking_metrics=["flow_rate"],
-    )
+    # use existing cbo or initialize new one
+    if cbo is None:
+        cbo = ContextualBayesOptAx(
+            search_space=build_search_space(),
+            metric_name="dim_error",
+            minimize=True,
+            tracking_metrics=["flow_rate"],
+        )
 
     # load data from google sheets and filter by channel
     df_full = pullData(sheet_name=sheet_name, verbose=False)
@@ -161,6 +164,7 @@ def run_batch_google_sheets(
     start_ambient: float = 80.0,
     start_resin_age: float = 1.0,
     resin_temp: float = 80.0,
+    save_path: str = "contextual_opt/src/data/cbo_state.json",
 ):
     """
     Run CBO for multiple batches (each batch = 4 channels) sequentially using Google Sheets data.
@@ -175,11 +179,25 @@ def run_batch_google_sheets(
         start_ambient: Starting ambient temp in F for first batch (default 80)
         start_resin_age: Starting resin age in hours for first batch (default 1)
         resin_temp: Base resin temp in F (default 80)
+        save_path: Path to save CBO state JSON file (auto-saved after each batch)
 
     Returns:
         list of dicts with results for each channel
     """
     results = []
+
+    # Initialize CBO once for the entire batch run
+    cbo = ContextualBayesOptAx(
+        search_space=build_search_space(),
+        metric_name="dim_error",
+        minimize=True,
+        tracking_metrics=["flow_rate"],
+    )
+
+    # Load existing state if available
+    if os.path.exists(save_path):
+        print(f"Loading existing CBO state from {save_path}")
+        cbo.load(save_path)
 
     current_ambient = start_ambient
     current_resin_age = start_resin_age
@@ -187,6 +205,7 @@ def run_batch_google_sheets(
     print(f"Starting {num_batches} batch(es) - {num_batches * 4} total channels")
     print(f"Temp direction: {temp}, Layer thickness: {layer_thickness_um} µm")
     print(f"Start ambient: {start_ambient}f, Start resin age: {start_resin_age}hr")
+    print(f"CBO state will be saved to {save_path} after each batch")
 
     for batch_idx in range(num_batches):
         # get latest channel number to know where to start this batch
@@ -240,8 +259,13 @@ def run_batch_google_sheets(
                 channel_num=channel_num,
                 context=context,
                 append_to_sheets=append_to_sheets,
+                cbo=cbo,
             )
             results.append(result)
+
+        # Save CBO state after each batch
+        cbo.save(save_path)
+        print(f"Saved CBO state after batch {batch_idx + 1}")
 
         # Update ambient for next batch (continue drift from last channel's ambient)
         if contexts:
