@@ -20,9 +20,9 @@ class ContextualBayesOptAx:
     """
     Contextual Bayesian Optimization using new Ax API (ax.api.Client).
 
-    - Uses Client for full state preservation (surrogate model weights)
+    - Uses Client for experiment state preservation (trial history, not model state)
     - Supports contextual optimization via fixed_parameters
-    - Save/load preserves model state exactly
+    - Save/load preserves experiment/trial data but NOT surrogate model parameters
     """
 
     def __init__(
@@ -201,12 +201,15 @@ class ContextualBayesOptAx:
 
     def save(self, filepath: str):
         """
-        Save the full Client state to JSON file.
+        Save the Client state to JSON file.
 
         This preserves:
         - Experiment configuration
         - All trial data (historical + new)
-        - Surrogate model state (GP weights and hyperparameters)
+
+        NOTE: Does NOT preserve surrogate model state (GP hyperparameters,
+        kernel parameters, or learned weights). Only experiment/trial history
+        is saved, allowing optimization to resume from where it stopped.
 
         Args:
             filepath: Path to save the JSON file.
@@ -222,7 +225,10 @@ class ContextualBayesOptAx:
 
     def load(self, filepath: str):
         """
-        Load the full Client state from JSON file.
+        Load Client state from JSON file.
+
+        Loads experiment/trial data. Note that the surrogate model is
+        retrained on load, so model state is not preserved.
 
         Args:
             filepath: Path to the JSON file.
@@ -240,4 +246,77 @@ class ContextualBayesOptAx:
         print(f"Loaded Client state from {filepath}")
 
         return self
+
+    def get_surrogate_model(self):
+        """
+        Get the current surrogate model from the generation strategy.
+
+        Returns:
+            The BoTorch model from the current generation step, or None if
+            no model has been fit yet.
+
+        Note:
+            This returns the model AFTER the last call to get_next_trials().
+            The model is owned by the generation strategy and should not
+            be modified.
+        """
+        gen_strategy = self.client._generation_strategy
+        if gen_strategy is None:
+            return None
+
+        model = gen_strategy.model
+        if model is None:
+            return None
+
+        return model
+
+    def save_surrogate_model(self, filepath: str):
+        """
+        Save the surrogate model state to a separate file.
+
+        This saves the actual GP model parameters (hyperparameters, kernel
+        parameters, etc.) which cannot be recovered from the JSON state file.
+
+        Args:
+            filepath: Path to save the model state (use .pt extension).
+        """
+        import torch
+
+        model = self.get_surrogate_model()
+        if model is None:
+            raise ValueError(
+                "No surrogate model available. "
+                "Run optimization first to fit the model."
+            )
+
+        state_dict = model.state_dict()
+        torch.save(state_dict, filepath)
+        print(f"Saved surrogate model state to {filepath}")
+
+    def load_surrogate_model(self, filepath: str):
+        """
+        Load the surrogate model state from a file.
+
+        This loads previously saved GP model parameters. After loading,
+        the model can be used for predictions without retraining.
+
+        Args:
+            filepath: Path to the saved model state file.
+
+        Note:
+            The loaded model will be used for future predictions, but
+            the generation strategy may still retrain on new data.
+        """
+        import torch
+
+        model = self.get_surrogate_model()
+        if model is None:
+            raise ValueError(
+                "No surrogate model available. "
+                "Run optimization first to create the model."
+            )
+
+        state_dict = torch.load(filepath, map_location="cpu")
+        model.load_state_dict(state_dict)
+        print(f"Loaded surrogate model state from {filepath}")
 
