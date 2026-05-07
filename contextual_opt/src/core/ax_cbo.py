@@ -121,7 +121,9 @@ class ContextualBayesOptAx:
             for tm in self.tracking_metrics:
                 try:
                     tm_val = getattr(row, tm)
-                    if tm_val is not None and not pd.isna(tm_val):
+
+                    # ensure no empty cells
+                    if tm_val is not None and not pd.isna(tm_val) and tm_val != "":
                         all_metrics[tm] = float(tm_val)
                 except AttributeError:
                     pass
@@ -246,4 +248,3 @@ class ContextualBayesOptAx:
         print(f"Loaded Client state from {filepath}")
 
         return self
-
