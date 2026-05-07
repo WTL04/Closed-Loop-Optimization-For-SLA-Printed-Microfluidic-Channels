@@ -28,7 +28,7 @@ def run_cfd_simulation(
         print(
             f"Running CFD: deltas L={length_delta:.2f} W={width_delta:.2f} H={height_delta:.2f} µm"
         )
-        print("Please wait (may take a few seconds)...")
+        print("Please wait (may take a few minutes)...")
         subprocess.run(
             [
                 "bash",

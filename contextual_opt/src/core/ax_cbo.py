@@ -23,6 +23,7 @@ class ContextualBayesOptAx:
     - Uses Client for experiment state preservation (trial history, not model state)
     - Supports contextual optimization via fixed_parameters
     - Save/load preserves experiment/trial data but NOT surrogate model parameters
+    - Sequential optimization: trials run one at a time
     """
 
     def __init__(
@@ -135,12 +136,11 @@ class ContextualBayesOptAx:
                 trial_idx = list(trial_dict.keys())[0]
                 self.client.complete_trial(trial_index=trial_idx, raw_data=raw_data)
 
-    def suggest(self, isOnline: bool, c_t: dict):
+    def suggest(self, c_t: dict):
         """
         Suggests knob settings given a context snapshot.
 
         Args:
-            isOnline: bool - if True, run the trial; if False, just get suggestion
             c_t: dict - context dictionary with context parameter values
 
         Returns:

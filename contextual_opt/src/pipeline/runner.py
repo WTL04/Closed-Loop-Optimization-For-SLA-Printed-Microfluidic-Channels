@@ -38,7 +38,7 @@ def run_single_channel(
     """
     channel_context = dict(context)
 
-    result = cbo.suggest(isOnline=True, c_t=channel_context)
+    result = cbo.suggest(c_t=channel_context)
     trial = result["trial"]
     suggested_params = trial.arm.parameters
 

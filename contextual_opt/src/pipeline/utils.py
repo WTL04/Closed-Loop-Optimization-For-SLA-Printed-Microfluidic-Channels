@@ -21,10 +21,10 @@ def print_suggested_params(suggested_params: dict):
     print(f"Layer Thickness: {suggested_params.get('layer_thickness_um', 'N/A')} µm")
 
 
-def save_params_to_json(suggested_params: dict, batch_id: int):
+def save_params_to_json(suggested_params: dict, channel: int):
     """Save suggested parameters to JSON file."""
     filename = "contextual_opt/src/data/suggested_params.json"
-    data = {"batch_id": batch_id, **suggested_params}
+    data = {"channel": channel, **suggested_params}
     with open(filename, "w") as f:
         json.dump(data, f, indent=2)
 
@@ -38,12 +38,11 @@ def append_single_to_sheets(channel_results: dict, context: dict, sheet_name: st
         context: Dict with context parameters (layer_thickness_um, ambient_temp, etc.)
         sheet_name: Name of the Google Sheet tab
     """
-    batch_raw = get_latest_col_value(column_name="batch_id", sheet_name=sheet_name)
-    batch_id = int(batch_raw) + 1 if batch_raw is not None else 1
+    channel_raw = get_latest_col_value(column_name="channel", sheet_name=sheet_name)
+    channel = int(channel_raw) + 1 if channel_raw is not None else 1
 
     row_data = {
-        "batch_id": batch_id,
-        "channel": channel_results.get("channel", 1),
+        "channel": channel,
         "layer_thickness_um": context.get("layer_thickness_um", 100),
         "ambient_temp": context.get("ambient_temp", 80.0),
         "resin_temp": context.get("resin_temp", 80.0),
@@ -57,5 +56,5 @@ def append_single_to_sheets(channel_results: dict, context: dict, sheet_name: st
         "dim_error": channel_results["dim_error"],
         "flow_rate": channel_results["flow_rate"],
     }
-    append_row(batch_id, row_data, context, sheet_name=sheet_name)
-    print(f"Appended batch {batch_id}, channel {row_data['channel']} to '{sheet_name}'")
+    append_row(channel, row_data, context, sheet_name=sheet_name)
+    print(f"Appended channel {row_data['channel']} to '{sheet_name}'")

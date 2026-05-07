@@ -21,7 +21,6 @@ creds = Credentials.from_service_account_file(
 
 # Expected headers matching the dataset schema
 EXPECTED_HEADERS = [
-    "batch_id",
     "channel",
     "layer_thickness_um",
     "ambient_temp",
@@ -112,7 +111,7 @@ def get_latest_col_value(
 
 
 def append_row(
-    batch_id: int,
+    channel: int,
     params: dict,
     c_new: dict,
     sheet_name: str = "Sheet1",
@@ -120,7 +119,7 @@ def append_row(
     """
     Append a single experiment record to Google Sheets.
 
-    - batch_id is metadata (stored as string)
+    - channel is metadata (stored as string)
     - params and context are numeric features where possible
     - Row is aligned strictly to existing sheet headers
     """
@@ -136,7 +135,7 @@ def append_row(
 
         # metadata (identifiers)
         metadata = {
-            "batch_id": str(batch_id),
+            "channel": str(channel),
         }
 
         # numeric features (params + context)
@@ -157,12 +156,11 @@ def append_row(
             else:
                 row.append("")
 
-        # Find the last row with data in column 1 (batch_id column)
-        # This fixes the issue where append_row writes to wrong columns
+        # Find the last row with data in column 1 (channel column)
         all_values = worksheet.get_all_values()
         last_row_with_data = 0
         for i, row_vals in enumerate(all_values):
-            if row_vals and row_vals[0]:  # first column has value
+            if row_vals and row_vals[0]:
                 last_row_with_data = i + 1
 
         next_row = last_row_with_data + 1
@@ -171,7 +169,7 @@ def append_row(
         for col_idx, value in enumerate(row, start=1):
             worksheet.update_cell(next_row, col_idx, value)
 
-        print(f"SUCCESS: Appended batch {batch_id} to '{sheet_name}'")
+        print(f"SUCCESS: Appended channel {channel} to '{sheet_name}'")
     except gspread.exceptions.SpreadsheetNotFound:
         print(f"ERROR: Spreadsheet not found. SHEET_ID={SHEET_ID}")
         raise
@@ -183,12 +181,12 @@ def append_row(
         raise
 
 
-def update_row(batch_id: int, updates: dict, sheet_name: str = "Sheet1"):
+def update_row(channel: int, updates: dict, sheet_name: str = "Sheet1"):
     """
-    Update specific columns in an existing row identified by batch_id.
+    Update specific columns in an existing row identified by channel.
 
     Args:
-        batch_id: The batch_id to look up in column 1
+        channel: The channel to look up in column 1
         updates: Dict of {column_name: value} to write into that row
         sheet_name: Worksheet name
     """
@@ -201,12 +199,12 @@ def update_row(batch_id: int, updates: dict, sheet_name: str = "Sheet1"):
         if not headers:
             raise ValueError("Header row is empty.")
 
-        # Find the row index by batch_id (column 1)
-        batch_col = worksheet.col_values(1)
+        # Find the row index by channel (column 1)
+        channel_col = worksheet.col_values(1)
         try:
-            row_index = batch_col.index(str(batch_id)) + 1  # 1-indexed
+            row_index = channel_col.index(str(channel)) + 1  # 1-indexed
         except ValueError:
-            raise ValueError(f"batch_id {batch_id} not found in sheet '{sheet_name}'")
+            raise ValueError(f"channel {channel} not found in sheet '{sheet_name}'")
 
         # Write only the specified columns
         for col_name, value in updates.items():

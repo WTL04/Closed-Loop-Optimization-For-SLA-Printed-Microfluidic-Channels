@@ -11,7 +11,7 @@ Submodules:
 - metrics: compute_dimensional_error, compute_flow_rate_cv
 - cfd_runs: run_cfd_simulation
 - cad_model: build_cad_model, export_cad_model
-- run: Main orchestration (run_with_google_sheets, run_with_testing, run_batch_google_sheets)
+- run: Main orchestration (run_with_google_sheets, run_with_testing, run_sequential)
 - config: Configuration constants
 """
 
@@ -53,6 +53,5 @@ from .utils import print_suggested_params, save_params_to_json, append_single_to
 from .run import (
     run_with_google_sheets,
     run_with_testing,
-    run_batch_google_sheets,
+    run_sequential,
 )
-
