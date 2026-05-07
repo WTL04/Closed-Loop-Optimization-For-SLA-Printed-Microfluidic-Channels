@@ -61,9 +61,8 @@ def run_with_google_sheets(
         )
 
     # load data from google sheets and get all history up to current channel
-    df_full = pullData(sheet_name=sheet_name, verbose=False)
+    df_historical = pullData(sheet_name=sheet_name, verbose=False)
     use_real_data = True
-    df_historical = df_full[df_full["channel"] <= channel_num].copy()
     cbo.add_historical(df_historical)
     print(f"Loaded {len(df_historical)} rows (channels 1-{channel_num})")
 
