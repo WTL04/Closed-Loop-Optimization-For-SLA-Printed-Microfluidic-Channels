@@ -3,6 +3,8 @@ from typing import Optional
 
 from ax.api import Client
 from ax.core import (
+    Arm,
+    GeneratorRun,
     SearchSpace,
     Experiment,
     ParameterType,
@@ -117,7 +119,14 @@ class ContextualBayesOptAx:
                     params[name] = val
 
             # Get metric values
-            all_metrics = {self.metric_name: getattr(row, self.metric_name, 0.0)}
+            main_metric_val = getattr(row, self.metric_name, None)
+            if (
+                main_metric_val is None
+                or main_metric_val == ""
+                or (hasattr(main_metric_val, "__float__") and pd.isna(main_metric_val))
+            ):
+                main_metric_val = 0.0
+            all_metrics = {self.metric_name: float(main_metric_val)}
             for tm in self.tracking_metrics:
                 try:
                     tm_val = getattr(row, tm)
@@ -128,15 +137,26 @@ class ContextualBayesOptAx:
                 except AttributeError:
                     pass
 
-            # Convert to raw_data format
-            raw_data = {k: float(v) for k, v in all_metrics.items()}
+            # Convert to raw_data format, handling empty strings
+            raw_data = {
+                k: (float(v) if v != "" else 0.0) for k, v in all_metrics.items()
+            }
 
-            # Get suggestion and immediately complete with observed data
-            # This adds the trial to the experiment with the right data
-            trial_dict = self.client.get_next_trials(max_trials=1)
-            if trial_dict:
-                trial_idx = list(trial_dict.keys())[0]
-                self.client.complete_trial(trial_index=trial_idx, raw_data=raw_data)
+            # Create trial directly with historical parameters, bypassing GenerationStrategy
+            arm = Arm(parameters=params)
+            gr = GeneratorRun(arms=[arm])
+            trial = self.client._experiment.new_trial(generator_run=gr)
+            trial.mark_running(no_runner_required=True)
+            self.client.complete_trial(trial_index=trial.index, raw_data=raw_data)
+
+        # Configure GS to skip Center+Sobol init, using historical trials as initialization
+        if len(df) > 0:
+            self.client.configure_generation_strategy(
+                method="fast",
+                initialization_budget=len(df),
+                initialize_with_center=False,
+                use_existing_trials_for_initialization=True,
+            )
 
     def suggest(self, c_t: dict):
         """

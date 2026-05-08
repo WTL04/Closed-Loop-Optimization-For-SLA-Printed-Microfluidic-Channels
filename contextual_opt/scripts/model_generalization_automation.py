@@ -44,6 +44,7 @@ if __name__ == "__main__":
             start_ambient=start_ambient,
             start_resin_age=start_resin_age,
             resin_temp=resin_temp,
+            save_path="contextual_opt/src/data/cbo_state.json",
         )
 
         print(f"\nBatch {i + 1} complete: {len(results)} channels run")

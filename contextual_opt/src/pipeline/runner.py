@@ -17,11 +17,7 @@ from contextual_opt.src.pipeline.cfd_runs import run_cfd_simulation
 
 
 def run_single_channel(
-    cbo,
-    context,
-    sheet_name: str,
-    channel_num: int,
-    use_real_data: bool
+    cbo, context, sheet_name: str, channel_num: int, use_real_data: bool
 ):
     """
     Run CBO for a SINGLE channel, return result.
@@ -113,3 +109,4 @@ def run_single_channel(
     )
 
     return channel_results
+

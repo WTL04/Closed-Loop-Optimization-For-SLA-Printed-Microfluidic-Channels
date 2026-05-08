@@ -27,6 +27,7 @@ def run_with_google_sheets(
     context: dict = None,
     append_to_sheets: bool = True,
     cbo=None,
+    load_historical: bool = True,
 ):
     """
     Run CBO using data from Google Sheets.
@@ -36,6 +37,9 @@ def run_with_google_sheets(
         channel_num: Channel number to run. If None, auto-detects from latest in sheet.
         context: Context parameters. If None, prompts user interactively.
         append_to_sheets: If True, appends results to Google Sheets after running.
+        cbo: Existing CBO instance. If None, creates new one.
+        load_historical: If True, loads all historical data from sheets. Set to False
+            when using a CBO that already has historical data loaded (e.g., from saved state).
 
     Returns:
         dict with channel_results and any other relevant info
@@ -61,10 +65,13 @@ def run_with_google_sheets(
         )
 
     # load data from google sheets and get all history up to current channel
-    df_historical = pullData(sheet_name=sheet_name, verbose=False)
     use_real_data = True
-    cbo.add_historical(df_historical)
-    print(f"Loaded {len(df_historical)} rows (channels 1-{channel_num})")
+    if load_historical:
+        df_historical = pullData(sheet_name=sheet_name, verbose=False)
+        cbo.add_historical(df_historical)
+        print(f"Loaded {len(df_historical)} rows (channels 1-{channel_num})")
+    else:
+        print("Using existing CBO state (skipping historical data load)")
 
     # Run CBO for ONE channel
     result = run_single_channel(
@@ -195,6 +202,7 @@ def run_sequential(
     if os.path.exists(save_path):
         print(f"Loading existing CBO state from {save_path}")
         cbo.load(save_path)
+        print(f"Loaded {len(cbo.client._experiment.trials)} existing trials")
     else:
         # Load all available historical data once at the start
         df_full = pullData(sheet_name=sheet_name, verbose=False)
@@ -244,6 +252,7 @@ def run_sequential(
             context=context,
             append_to_sheets=append_to_sheets,
             cbo=cbo,
+            load_historical=False,
         )
         results.append(result)
 
