@@ -121,4 +121,3 @@ def context_overtime(
         resin_age += 6  # Increase by 6 hours
 
     return contexts
-

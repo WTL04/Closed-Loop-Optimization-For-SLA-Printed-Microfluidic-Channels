@@ -3,8 +3,8 @@ Runs 120 trials in total to help generalize the model
 All results will be appended to the google sheets
 
 - 30 runs (ambient_temp: increase, layer_thickness: 100um)
-- 30 runs (ambient_temp: increase, layer_thickness: 50um)
 - 30 runs (ambient_temp: decrease, layer_thickness: 100um)
+- 30 runs (ambient_temp: increase, layer_thickness: 50um)
 - 30 runs (ambient_temp: decrease, layer_thickness: 50um)
 
 Each batch starts fresh with new CBO for independent exploration.
@@ -20,13 +20,14 @@ if __name__ == "__main__":
         print(f"Batch {i + 1}/4")
         print("=" * 60)
 
+        # DEBUG: increase once confident context variables wont go in a weird unpredictable pattern
         num_channels = 30
 
-        # set temperature direction
-        temp = "hot" if i in [0, 1] else "cold"
+        # set temperature direction, alternate
+        temp = "hot" if i in [0, 2] else "cold"
 
         # set layer thickness
-        layer_thickness_um = 100 if i in [0, 2] else 50
+        layer_thickness_um = 100 if i in [0, 1] else 50
 
         testing = False
         append_to_sheets = True
