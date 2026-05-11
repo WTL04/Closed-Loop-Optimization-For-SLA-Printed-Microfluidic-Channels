@@ -131,9 +131,11 @@ class ContextualBayesOptAx:
                 try:
                     tm_val = getattr(row, tm)
 
-                    # ensure no empty cells
+                    # skip zero/empty tracking metrics (e.g. failed CFD runs)
                     if tm_val is not None and not pd.isna(tm_val) and tm_val != "":
-                        all_metrics[tm] = float(tm_val)
+                        val = float(tm_val)
+                        if val != 0.0:
+                            all_metrics[tm] = val
                 except AttributeError:
                     pass
 

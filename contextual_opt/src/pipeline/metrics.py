@@ -12,6 +12,7 @@ import numpy as np
 from contextual_opt.src.pipeline.config import (
     NUM_CHANNELS,
     BASELINE_FLOW_RATE,
+    BASELINE_FLOW_RATE_ML_MIN,
     NOMINAL_DIMENSIONS,
 )
 
@@ -90,15 +91,15 @@ def compute_dimensional_error(params: dict, num_channels: int = NUM_CHANNELS) ->
     return float(np.mean(squared_errors)) if squared_errors else 0.0
 
 
-def calculate_functional_recovery(extracted_flow_rate: float) -> float:
+def calculate_functional_recovery(extracted_flow_rate_ml_per_min: float) -> float:
     """
     Calculates how close the pre-distorted channel's flow rate
     is to the perfect nominal baseline.
 
     Args:
-        extracted_flow_rate: Flow rate in m^3/s from OpenFOAM
+        extracted_flow_rate_ml_per_min: Flow rate in mL/min from dataset
 
     Returns:
         Error percentage (0.0 = perfect recovery)
     """
-    return abs(extracted_flow_rate - BASELINE_FLOW_RATE) / BASELINE_FLOW_RATE * 100.0
+    return abs(extracted_flow_rate_ml_per_min - BASELINE_FLOW_RATE_ML_MIN) / BASELINE_FLOW_RATE_ML_MIN * 100.0

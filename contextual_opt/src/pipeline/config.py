@@ -4,11 +4,12 @@ MIN_CHANNEL_SPACING = 2.0  # mm - minimum gap between adjacent channel rows
 
 # Baseline ground truth for functional validation
 BASELINE_FLOW_RATE = 2.312215e-9  # m³/s - measured using openFOAM with no 0.0 deltas
+BASELINE_FLOW_RATE_ML_MIN = 0.13873  # mL/min - converted for dataset comparison
 
 # Channel dimension bounds in micrometers (pre-distortion: nominal +/- max expected delta)
-CHANNEL_LENGTH_UM_BOUNDS = (39940, 40060)
-CHANNEL_WIDTH_UM_BOUNDS = (485, 515)
-CHANNEL_HEIGHT_UM_BOUNDS = (485, 515)
+CHANNEL_LENGTH_UM_BOUNDS = (39940, 40055)
+CHANNEL_WIDTH_UM_BOUNDS = (485, 510)
+CHANNEL_HEIGHT_UM_BOUNDS = (485, 510)
 
 # Nominal target dimensions in micrometers (for error computation)
 NOMINAL_DIMENSIONS = {
