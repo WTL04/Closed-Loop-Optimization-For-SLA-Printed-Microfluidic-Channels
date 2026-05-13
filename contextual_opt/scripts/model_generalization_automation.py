@@ -13,7 +13,7 @@ Each batch starts fresh with new CBO for independent exploration.
 from contextual_opt.src.pipeline.run import run_sequential
 
 if __name__ == "__main__":
-    sheet_name = "Experiment Realistic Deltas"
+    sheet_name = "Experiment Random Deltas"
 
     # 10 runs, 30, runs, 50 runs, 70 runs
     for j in [10, 30, 50, 70]:
@@ -47,7 +47,6 @@ if __name__ == "__main__":
                 start_ambient=start_ambient,
                 start_resin_age=start_resin_age,
                 resin_temp=resin_temp,
-                save_path="contextual_opt/src/data/cbo_state.json",
             )
 
             print(f"\nBatch {i + 1} complete: {len(results)} channels run")

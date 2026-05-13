@@ -105,9 +105,10 @@ def run_single_channel(
     if flow_rate > 0:
         metric_values["flow_rate"] = flow_rate
     else:
-        print(f"  WARNING: CFD returned zero flow rate — skipping flow_rate for surrogate")
+        print(
+            "  WARNING: CFD returned zero flow rate — skipping flow_rate for surrogate"
+        )
 
     cbo.observe(trial=trial, metric_values=metric_values)
 
     return channel_results
-

@@ -170,7 +170,6 @@ def run_sequential(
     start_ambient: float = 80.0,
     start_resin_age: float = 1.0,
     resin_temp: float = 80.0,
-    save_path: str = "contextual_opt/src/data/cbo_state.json",
 ):
     """
     Run CBO sequentially for N channels (1→2→3→...).
@@ -185,11 +184,19 @@ def run_sequential(
         start_ambient: Starting ambient temp in F for first channel (default 80)
         start_resin_age: Starting resin age in hours for first channel (default 1)
         resin_temp: Base resin temp in F (default 80)
-        save_path: Path to save CBO state JSON file (auto-saved after each run)
 
     Returns:
         list of dicts with results for each channel
     """
+
+    # Choose cbo state file depending on which google sheet dataset
+    if sheet_name == "Experiment Realistic Deltas":
+        save_path = "contextual_opt/src/data/cbo_state_realistic.json"
+    elif sheet_name == "Experiment Random Deltas":
+        save_path = "contextual_opt/src/data/cbo_state_random.json"
+    else:
+        raise ValueError(f"Unknown sheet_name: {sheet_name}")
+
     results = []
 
     cbo = ContextualBayesOptAx(
