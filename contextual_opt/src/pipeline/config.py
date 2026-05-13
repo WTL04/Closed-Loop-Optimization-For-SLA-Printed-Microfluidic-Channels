@@ -8,8 +8,8 @@ BASELINE_FLOW_RATE_ML_MIN = 0.13873  # mL/min - converted for dataset comparison
 
 # Channel dimension bounds in micrometers (pre-distortion: nominal +/- max expected delta)
 CHANNEL_LENGTH_UM_BOUNDS = (39940, 40055)
-CHANNEL_WIDTH_UM_BOUNDS = (485, 510)
-CHANNEL_HEIGHT_UM_BOUNDS = (485, 510)
+CHANNEL_WIDTH_UM_BOUNDS = (485, 505)
+CHANNEL_HEIGHT_UM_BOUNDS = (485, 505)
 
 # Nominal target dimensions in micrometers (for error computation)
 NOMINAL_DIMENSIONS = {

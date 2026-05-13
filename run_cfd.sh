@@ -18,8 +18,8 @@ HEIGHT_DELTA="${3:-}"
 # NOTE: if you change Dockerfile or req.txt, run: docker rmi unified-cfd-env
 #       to force a rebuild on next run
 if [[ "$(docker images -q $IMAGE_NAME 2>/dev/null)" == "" ]]; then
-	echo "Building Docker image '$IMAGE_NAME'..."
-	docker build -t $IMAGE_NAME .
+  echo "Building Docker image '$IMAGE_NAME'..."
+  docker build -t $IMAGE_NAME .
 fi
 
 # ---------------------------------------------------------------------------
@@ -31,7 +31,7 @@ INNER_SCRIPT="$REPO_ROOT/.pipeline_inner.sh"
 
 cat >"$INNER_SCRIPT" <<INNEREOF
 #!/bin/bash
-set -e
+set -x
 
 # ---------------------------------------------------------------
 # 1. CAD Generation
@@ -77,10 +77,10 @@ echo "Starting Unified Pipeline..."
 echo "Repo root: $REPO_ROOT"
 
 docker run --rm \
-	--entrypoint bash \
-	-v "$REPO_ROOT:/case" \
-	$IMAGE_NAME \
-	/case/.pipeline_inner.sh
+  --entrypoint bash \
+  -v "$REPO_ROOT:/case" \
+  $IMAGE_NAME \
+  /case/.pipeline_inner.sh
 
 # Clean up inner script after run
 rm -f "$INNER_SCRIPT"
