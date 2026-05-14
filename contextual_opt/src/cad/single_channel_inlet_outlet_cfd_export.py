@@ -3,11 +3,6 @@ from cadquery import Face, Compound
 import os
 import sys
 
-# Fixed nominal dimensions (mm)
-BASE_LENGTH = 40.0
-BASE_WIDTH = 0.5
-BASE_HEIGHT = 0.5
-
 # CFD extensions (mm)
 INLET_LENGTH = 5.0
 OUTLET_LENGTH = 5.0
@@ -22,26 +17,35 @@ CFD_RUN_SCRIPT = "run_cfd.sh"
 SHEET_NAME = "Experiment Realistic Deltas"
 
 
-def compute_post_print_dimensions(length_delta, width_delta, height_delta):
+def compute_expected_physical_dimensions(
+    cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um
+):
     """
-    Deltas are shrinkage values in micrometres (um).
-    Actual printed dimension = nominal - shrinkage.
-    Convert um -> mm by dividing by 1000.
+    Calculates the actual physical dimensions that will exit the 3D printer.
+    Expected Physical = CBO_Suggested_CAD_Input + Printer_Delta_Error
+    Converts from micrometers (um) to millimeters (mm) for CadQuery.
     """
-    L = BASE_LENGTH - (length_delta / 1000.0)
-    W = BASE_WIDTH - (width_delta / 1000.0)
-    H = BASE_HEIGHT - (height_delta / 1000.0)
+    phys_l_um = cbo_l_um - delta_l_um
+    phys_w_um = cbo_w_um - delta_w_um
+    phys_h_um = cbo_h_um - delta_h_um
+
+    L = phys_l_um / 1000.0
+    W = phys_w_um / 1000.0
+    H = phys_h_um / 1000.0
 
     if L <= 0 or W <= 0 or H <= 0:
         raise ValueError(
-            f"Post-print dimensions became non-positive: L={L}, W={W}, H={H}. "
-            f"Check delta units -- expected micrometres."
+            f"Physical dimensions became non-positive: L={L}, W={W}, H={H}. "
+            f"CBO inputs (um): l={cbo_l_um}, w={cbo_w_um}, h={cbo_h_um}; "
+            f"Deltas (um): l={delta_l_um}, w={delta_w_um}, h={delta_h_um}."
         )
     return L, W, H
 
 
-def build_channel(length_delta, width_delta, height_delta):
-    L, W, H = compute_post_print_dimensions(length_delta, width_delta, height_delta)
+def build_channel(cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um):
+    L, W, H = compute_expected_physical_dimensions(
+        cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um
+    )
     total_length = INLET_LENGTH + L + OUTLET_LENGTH
 
     # World-space X coordinates of channel ends
@@ -54,12 +58,12 @@ def build_channel(length_delta, width_delta, height_delta):
     # --- Fluid volume: full enclosed rectangular prism ---
     fluid = cq.Workplane("XY").box(total_length, W, H).translate((x_mid, y_mid, z_mid))
 
-    # --- Inlet: flat face at x_start (near-zero thickness for STL export) ---
+    # --- Inlet: flat face at x_start (thin extrusion for STL export) ---
     # Uses YZ plane so the face normal points along X
     inlet = (
         cq.Workplane("YZ")
         .rect(W, H)
-        .extrude(0.001)  # 1 um thickness -- effectively a surface
+        .extrude(0.01)  # 10 um thickness -- thick enough for snappyHexMesh to resolve
         .translate((x_start, y_mid, z_mid))
     )
 
@@ -67,8 +71,8 @@ def build_channel(length_delta, width_delta, height_delta):
     outlet = (
         cq.Workplane("YZ")
         .rect(W, H)
-        .extrude(0.001)
-        .translate((x_end - 0.001, y_mid, z_mid))
+        .extrude(0.01)
+        .translate((x_end - 0.01, y_mid, z_mid))
     )
 
     # --- Walls: 4 long faces only (top, bottom, left, right) ---
@@ -98,9 +102,13 @@ def build_channel(length_delta, width_delta, height_delta):
     return fluid, walls, inlet, outlet, L, W, H
 
 
-def run_pipeline(length_delta, width_delta, height_delta):
+def run_pipeline(cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um):
+    """
+    Pipeline that creates a channel given Ax CBO's pre-distortion dimensions, and post print deltas
+    """
+
     fluid, walls, inlet, outlet, L, W, H = build_channel(
-        length_delta, width_delta, height_delta
+        cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um
     )
 
     os.makedirs(STL_EXPORT_DIR, exist_ok=True)
@@ -124,10 +132,21 @@ def run_pipeline(length_delta, width_delta, height_delta):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 3:
-        l_d = float(sys.argv[1])
-        w_d = float(sys.argv[2])
-        h_d = float(sys.argv[3])
+    if len(sys.argv) >= 7:
+        cbo_l = float(sys.argv[1])
+        cbo_w = float(sys.argv[2])
+        cbo_h = float(sys.argv[3])
+        delta_l = float(sys.argv[4])
+        delta_w = float(sys.argv[5])
+        delta_h = float(sys.argv[6])
+    elif len(sys.argv) >= 4:
+        print("Received 3 args — treating as deltas only, using nominal CBO inputs.")
+        cbo_l = 40000.0
+        cbo_w = 500.0
+        cbo_h = 500.0
+        delta_l = float(sys.argv[1])
+        delta_w = float(sys.argv[2])
+        delta_h = float(sys.argv[3])
     else:
         try:
             from contextual_opt.src import sheets_api
@@ -140,20 +159,23 @@ if __name__ == "__main__":
                 "width": "channel_1_post_print_width_delta",
                 "height": "channel_1_post_print_height_delta",
             }
-            l_d = float(
+            delta_l = float(
                 sheets_api.get_latest_col_value(cols["length"], sheet_name=SHEET_NAME)
                 or 0.0
             )
-            w_d = float(
+            delta_w = float(
                 sheets_api.get_latest_col_value(cols["width"], sheet_name=SHEET_NAME)
                 or 0.0
             )
-            h_d = float(
+            delta_h = float(
                 sheets_api.get_latest_col_value(cols["height"], sheet_name=SHEET_NAME)
                 or 0.0
             )
         except Exception as e:
             print(f"Could not fetch from sheets: {e}. Using zero deltas.")
-            l_d, w_d, h_d = 0.0, 0.0, 0.0
+            delta_l, delta_w, delta_h = 0.0, 0.0, 0.0
 
-    run_pipeline(l_d, w_d, h_d)
+        print("No CBO args provided. Using nominal CBO inputs (40000, 500, 500 um).")
+        cbo_l, cbo_w, cbo_h = 40000.0, 500.0, 500.0
+
+    run_pipeline(cbo_l, cbo_w, cbo_h, delta_l, delta_w, delta_h)

@@ -16,7 +16,7 @@ if __name__ == "__main__":
     sheet_name = "Experiment Random Deltas"
 
     # 10 runs, 30, runs, 50 runs, 70 runs
-    for j in [10, 30, 50, 70]:
+    for j in [10]:
         for i in range(4):
             print("\n" + "=" * 60)
             print(f" {j} Channel Runs, Batch {i + 1}/4")

@@ -13,12 +13,14 @@ def extract_flow_rate() -> float:
     try:
         latest = sorted(POST_DIR.iterdir(), key=lambda p: float(p.name))[-1]
         dat_file = latest / "surfaceFieldValue_0.dat"
+        if not dat_file.exists():
+            dat_file = latest / "surfaceFieldValue.dat"
     except (ValueError, IndexError, OSError):
         print("No timestep directories found")
         return 0.0
 
     if not dat_file.exists():
-        print("surfaceFieldValue_0.dat not found")
+        print("No surfaceFieldValue dat file found")
         return 0.0
 
     try:

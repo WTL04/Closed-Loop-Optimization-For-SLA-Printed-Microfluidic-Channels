@@ -5,14 +5,17 @@ IMAGE_NAME="unified-cfd-env"
 REPO_ROOT="$(pwd)"
 
 # ---------------------------------------------------------------------------
-# Parse delta arguments
-# Usage: ./run_cfd.sh <length_delta> <width_delta> <height_delta>
-# Deltas are shrinkage values in micrometres (um)
+# Parse CBO CAD inputs and delta arguments
+# Usage: ./run_cfd.sh <cbo_length_um> <cbo_width_um> <cbo_height_um> <delta_length_um> <delta_width_um> <delta_height_um>
+# Expected Physical = CBO_Suggested_CAD + Printer_Delta_Error
 # If not provided, export.py falls back to fetching latest from Google Sheets
 # ---------------------------------------------------------------------------
-LENGTH_DELTA="${1:-}"
-WIDTH_DELTA="${2:-}"
-HEIGHT_DELTA="${3:-}"
+CBO_LENGTH_UM="${1:-}"
+CBO_WIDTH_UM="${2:-}"
+CBO_HEIGHT_UM="${3:-}"
+LENGTH_DELTA="${4:-}"
+WIDTH_DELTA="${5:-}"
+HEIGHT_DELTA="${6:-}"
 
 # Build the Docker image if it does not exist
 # NOTE: if you change Dockerfile or req.txt, run: docker rmi unified-cfd-env
@@ -31,7 +34,6 @@ INNER_SCRIPT="$REPO_ROOT/.pipeline_inner.sh"
 
 cat >"$INNER_SCRIPT" <<INNEREOF
 #!/bin/bash
-set -x
 
 # ---------------------------------------------------------------
 # 1. CAD Generation
@@ -39,8 +41,9 @@ set -x
 echo '--- Step 1: CAD Generation ---'
 cd /case
 
-if [ -n "${LENGTH_DELTA}" ] && [ -n "${WIDTH_DELTA}" ] && [ -n "${HEIGHT_DELTA}" ]; then
+if [ -n "${CBO_LENGTH_UM}" ] && [ -n "${CBO_WIDTH_UM}" ] && [ -n "${CBO_HEIGHT_UM}" ] && [ -n "${LENGTH_DELTA}" ] && [ -n "${WIDTH_DELTA}" ] && [ -n "${HEIGHT_DELTA}" ]; then
     python contextual_opt/src/cad/single_channel_inlet_outlet_cfd_export.py \
+        ${CBO_LENGTH_UM} ${CBO_WIDTH_UM} ${CBO_HEIGHT_UM} \
         ${LENGTH_DELTA} ${WIDTH_DELTA} ${HEIGHT_DELTA}
 else
     python contextual_opt/src/cad/single_channel_inlet_outlet_cfd_export.py
@@ -56,12 +59,12 @@ set -e
 
 cd /case/cfd/channelCase
 
-rm -rf constant/polyMesh
+rm -rf constant/polyMesh postProcessing
 blockMesh
 surfaceFeatureExtract
 snappyHexMesh -overwrite
 checkMesh
-simpleFoam
+simpleFoam || true
 
 # ---------------------------------------------------------------
 # 3. Flow Rate Extraction

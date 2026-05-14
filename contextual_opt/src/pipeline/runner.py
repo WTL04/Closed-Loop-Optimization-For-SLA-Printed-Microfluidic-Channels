@@ -76,6 +76,9 @@ def run_single_channel(
             else generate_random_deltas()
         )
         flow_rate_m3s = run_cfd_simulation(
+            cbo_length_um=channel_length_um,
+            cbo_width_um=channel_width_um,
+            cbo_height_um=channel_height_um,
             length_delta=deltas["length"],
             width_delta=deltas["width"],
             height_delta=deltas["height"],

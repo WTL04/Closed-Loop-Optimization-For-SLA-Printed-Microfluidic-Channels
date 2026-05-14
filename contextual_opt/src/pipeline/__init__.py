@@ -37,11 +37,6 @@ from .cfd_runs import (
     run_cfd_simulation,
 )
 
-from .cad_model import (
-    build_cad_model,
-    export_cad_model,
-)
-
 from .search_space import build_search_space
 
 from .context import get_context_snapshot, context_overtime
