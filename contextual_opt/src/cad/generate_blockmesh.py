@@ -27,9 +27,12 @@ BLOCKMESH_DICT_PATH = "cfd/channelCase/system/blockMeshDict"
 
 # Mesh parameters - Conservative settings for boundary layer resolution
 FIRST_CELL_SIZE_UM = 10.0  # First cell height at wall (micrometers)
-EXPANSION_RATIO = 1.15     # Cell-to-cell expansion ratio for grading
-TARGET_CORE_CELL_SIZE_UM = 50.0  # Target cell size in channel core
 TARGET_X_CELL_SIZE_UM = 200.0    # Target cell size along flow direction
+
+
+def fmt_float(value, decimals=6):
+    """Format float stripping unnecessary trailing zeros."""
+    return f"{value:.{decimals}f}".rstrip('0').rstrip('.')
 
 
 def compute_physical_dimensions(cbo_l_um, cbo_w_um, cbo_h_um, 
@@ -52,103 +55,46 @@ def compute_physical_dimensions(cbo_l_um, cbo_w_um, cbo_h_um,
     return phys_l_mm, phys_w_mm, phys_h_mm
 
 
-def calculate_grading(half_width_mm, first_cell_um, expansion_ratio, core_cell_um):
+def calculate_expansion_grading(half_length_mm, n_cells, first_cell_mm):
     """
-    Calculate number of cells and grading ratio for one side of a symmetric grading.
+    Calculate the grading ratio to achieve desired first cell size.
     
-    For boundary layer grading, we want fine cells at the wall expanding toward
-    the center. blockMesh uses 'simpleGrading' where the ratio is (last_cell / first_cell).
+    For geometric grading: L = first * (r^n - 1) / (r - 1)
+    Solving for r given L, n, and first cell size.
     
-    Args:
-        half_width_mm: Distance from wall to center (mm)
-        first_cell_um: First cell size at wall (micrometers)
-        expansion_ratio: Growth ratio between adjacent cells
-        core_cell_um: Target cell size at the center (micrometers)
-    
-    Returns:
-        (n_cells, grading_ratio) for blockMesh simpleGrading
+    Returns the expansion ratio (center_cell / wall_cell).
     """
-    half_width_um = half_width_mm * 1000.0
+    if n_cells <= 1:
+        return 1.0
     
-    # Calculate how many cells needed to go from first_cell to core_cell
-    # with given expansion ratio: core_cell = first_cell * expansion^(n-1)
-    n_graded = max(1, int(math.ceil(
-        math.log(core_cell_um / first_cell_um) / math.log(expansion_ratio)
-    )))
+    uniform_size = half_length_mm / n_cells
     
-    # Calculate length covered by graded region
-    # Geometric series: sum = first_cell * (expansion^n - 1) / (expansion - 1)
-    graded_length_um = first_cell_um * (expansion_ratio**n_graded - 1) / (expansion_ratio - 1)
+    if first_cell_mm >= uniform_size:
+        return 1.0
     
-    # If graded region covers more than half width, adjust
-    if graded_length_um >= half_width_um:
-        # Need fewer cells, recalculate to fit
-        # Use simpler approach: uniform small cells
-        n_cells = max(4, int(math.ceil(half_width_um / first_cell_um)))
-        return n_cells, 1.0  # No grading, uniform cells
+    target_sum = half_length_mm
+    first = first_cell_mm
+    n = n_cells
     
-    # Remaining length gets uniform core cells
-    remaining_um = half_width_um - graded_length_um
-    n_core = max(1, int(math.ceil(remaining_um / core_cell_um)))
+    r_low, r_high = 1.01, 10.0
+    r_mid = (r_low + r_high) / 2.0
     
-    total_cells = n_graded + n_core
+    for _ in range(50):
+        r_mid = (r_low + r_high) / 2.0
+        if r_mid <= 1.0:
+            r_mid = 1.01
+        
+        calc_sum = first * (r_mid**n - 1) / (r_mid - 1)
+        
+        if abs(calc_sum - target_sum) < 1e-9:
+            break
+        elif calc_sum < target_sum:
+            r_low = r_mid
+        else:
+            r_high = r_mid
     
-    # The grading ratio for blockMesh is last_cell/first_cell for the whole block
-    # For symmetric grading, we'll use multi-grading syntax
-    last_cell_um = first_cell_um * (expansion_ratio ** (n_graded - 1))
-    grading_ratio = last_cell_um / first_cell_um if n_graded > 1 else 1.0
-    
-    return total_cells, grading_ratio, n_graded, n_core
-
-
-def calculate_mesh_parameters(L_mm, W_mm, H_mm):
-    """
-    Calculate all mesh parameters for the channel.
-    
-    Returns dict with cell counts and grading for each direction.
-    """
-    total_length_mm = INLET_LENGTH_MM + L_mm + OUTLET_LENGTH_MM
-    
-    # X direction (flow direction) - uniform cells
-    n_x = max(10, int(math.ceil(total_length_mm * 1000 / TARGET_X_CELL_SIZE_UM)))
-    
-    # Y direction (width) - symmetric grading from both walls
-    half_W_mm = W_mm / 2.0
-    y_result = calculate_grading(half_W_mm, FIRST_CELL_SIZE_UM, 
-                                  EXPANSION_RATIO, TARGET_CORE_CELL_SIZE_UM)
-    
-    # Z direction (height) - symmetric grading from both walls  
-    half_H_mm = H_mm / 2.0
-    z_result = calculate_grading(half_H_mm, FIRST_CELL_SIZE_UM,
-                                  EXPANSION_RATIO, TARGET_CORE_CELL_SIZE_UM)
-    
-    # For symmetric grading, we need cells for both halves
-    if len(y_result) == 2:
-        n_y, y_grading = y_result
-        n_y = n_y * 2  # Both sides
-        y_grading_str = f"(1 1 {y_grading})"  # Will be expanded to symmetric
-    else:
-        n_y_half, y_grading, n_graded_y, n_core_y = y_result
-        n_y = n_y_half * 2
-        y_grading_str = f"(1 1 {y_grading:.4f})"
-    
-    if len(z_result) == 2:
-        n_z, z_grading = z_result
-        n_z = n_z * 2
-        z_grading_str = f"(1 1 {z_grading})"
-    else:
-        n_z_half, z_grading, n_graded_z, n_core_z = z_result
-        n_z = n_z_half * 2
-        z_grading_str = f"(1 1 {z_grading:.4f})"
-    
-    return {
-        'total_length_mm': total_length_mm,
-        'n_x': n_x,
-        'n_y': n_y,
-        'n_z': n_z,
-        'y_grading': y_grading_str,
-        'z_grading': z_grading_str,
-    }
+    r_mid = max(1.1, min(r_mid, 8.0))
+    return r_mid
 
 
 def generate_blockmesh_dict(L_mm, W_mm, H_mm):
@@ -165,16 +111,9 @@ def generate_blockmesh_dict(L_mm, W_mm, H_mm):
     - outlet: X=total_length face
     - walls: Y and Z boundary faces (4 faces total)
     """
-    params = calculate_mesh_parameters(L_mm, W_mm, H_mm)
-    
-    total_L = params['total_length_mm']
+    total_L = INLET_LENGTH_MM + L_mm + OUTLET_LENGTH_MM
     half_W = W_mm / 2.0
     
-    # For small channels, use simpler uniform grading with adequate resolution
-    # This avoids complexity of multi-grading for very thin channels
-    
-    # Recalculate with simpler approach for robustness
-    # Target: at least 10 cells across the smallest dimension
     min_dim_mm = min(W_mm, H_mm)
     min_cells_across = 20  # Ensure good resolution
     
@@ -214,6 +153,8 @@ def generate_blockmesh_dict(L_mm, W_mm, H_mm):
     # For Z direction  
     z_grading = calculate_expansion_grading(H_mm / 2.0, half_n_z, first_cell_mm)
     
+    inv_y_grading = 1.0 / y_grading
+    inv_z_grading = 1.0 / z_grading
     total_cells = n_x * n_y * n_z
     
     # Build the blockMeshDict content
@@ -233,17 +174,14 @@ scale 0.001;  // Dimensions below are in mm, converted to meters
 
 vertices
 (
-    // Bottom face (z = 0)
-    (0       {-half_W:.6f}  0)          // 0: inlet bottom-left
-    ({total_L:.6f}  {-half_W:.6f}  0)   // 1: outlet bottom-left
-    ({total_L:.6f}  {half_W:.6f}   0)   // 2: outlet bottom-right
-    (0       {half_W:.6f}   0)          // 3: inlet bottom-right
-    
-    // Top face (z = H)
-    (0       {-half_W:.6f}  {H_mm:.6f}) // 4: inlet top-left
-    ({total_L:.6f}  {-half_W:.6f}  {H_mm:.6f})  // 5: outlet top-left
-    ({total_L:.6f}  {half_W:.6f}   {H_mm:.6f})  // 6: outlet top-right
-    (0       {half_W:.6f}   {H_mm:.6f}) // 7: inlet top-right
+    (0       {fmt_float(-half_W)}  0)
+    ({fmt_float(total_L)}  {fmt_float(-half_W)}  0)
+    ({fmt_float(total_L)}  {fmt_float(half_W)}   0)
+    (0       {fmt_float(half_W)}   0)
+    (0       {fmt_float(-half_W)}  {fmt_float(H_mm)})
+    ({fmt_float(total_L)}  {fmt_float(-half_W)}  {fmt_float(H_mm)})
+    ({fmt_float(total_L)}  {fmt_float(half_W)}   {fmt_float(H_mm)})
+    (0       {fmt_float(half_W)}   {fmt_float(H_mm)})
 );
 
 blocks
@@ -251,16 +189,14 @@ blocks
     hex (0 1 2 3 4 5 6 7) ({n_x} {n_y} {n_z})
     simpleGrading
     (
-        1  // X: uniform (no grading along flow direction)
-        // Y: symmetric grading - fine at walls (-Y and +Y), coarser in center
+        1
         (
-            (0.5 0.5 {y_grading:.4f})   // First half: expand toward center
-            (0.5 0.5 {1/y_grading:.4f}) // Second half: contract from center
+            (0.5 0.5 {y_grading:.4f})
+            (0.5 0.5 {inv_y_grading:.4f})
         )
-        // Z: symmetric grading - fine at walls (bottom and top), coarser in center
         (
-            (0.5 0.5 {z_grading:.4f})   // First half: expand toward center  
-            (0.5 0.5 {1/z_grading:.4f}) // Second half: contract from center
+            (0.5 0.5 {z_grading:.4f})
+            (0.5 0.5 {inv_z_grading:.4f})
         )
     )
 );
@@ -276,7 +212,7 @@ boundary
         type patch;
         faces
         (
-            (0 4 7 3)  // X = 0 face
+            (0 4 7 3)
         );
     }}
     
@@ -285,7 +221,7 @@ boundary
         type patch;
         faces
         (
-            (1 2 6 5)  // X = total_length face
+            (1 2 6 5)
         );
     }}
     
@@ -294,10 +230,10 @@ boundary
         type wall;
         faces
         (
-            (0 1 5 4)  // Y = -W/2 face (left wall)
-            (3 7 6 2)  // Y = +W/2 face (right wall)
-            (0 3 2 1)  // Z = 0 face (bottom wall)
-            (4 5 6 7)  // Z = H face (top wall)
+            (0 1 5 4)
+            (3 7 6 2)
+            (0 3 2 1)
+            (4 5 6 7)
         );
     }}
 );
@@ -307,69 +243,6 @@ mergePatchPairs
 );
 """
     return content
-
-
-def calculate_expansion_grading(half_length_mm, n_cells, first_cell_mm):
-    """
-    Calculate the grading ratio to achieve desired first cell size.
-    
-    For geometric grading: L = first * (r^n - 1) / (r - 1)
-    Solving for r given L, n, and first cell size.
-    
-    Returns the expansion ratio (center_cell / wall_cell).
-    """
-    if n_cells <= 1:
-        return 1.0
-    
-    # Target: first_cell at wall, expanding toward center
-    # Total length of half domain = half_length_mm
-    # Number of cells = n_cells
-    
-    # If uniform: cell_size = half_length / n_cells
-    uniform_size = half_length_mm / n_cells
-    
-    # We want first_cell at the wall
-    # Grading ratio r = last_cell / first_cell
-    
-    # For geometric series with ratio r:
-    # sum = first * (r^n - 1) / (r - 1) = half_length
-    # first = first_cell_mm
-    
-    # If first_cell > uniform, we need r < 1 (cells get smaller toward center)
-    # If first_cell < uniform, we need r > 1 (cells get larger toward center)
-    
-    if first_cell_mm >= uniform_size:
-        # First cell already larger than average, use mild contraction
-        return 0.8
-    
-    # Iteratively solve for r
-    # Using Newton-Raphson or bisection
-    target_sum = half_length_mm
-    first = first_cell_mm
-    n = n_cells
-    
-    # Bisection method
-    r_low, r_high = 1.01, 10.0
-    
-    for _ in range(50):
-        r_mid = (r_low + r_high) / 2.0
-        if r_mid <= 1.0:
-            r_mid = 1.01
-        
-        # Calculate sum with this ratio
-        calc_sum = first * (r_mid**n - 1) / (r_mid - 1)
-        
-        if abs(calc_sum - target_sum) < 1e-9:
-            break
-        elif calc_sum < target_sum:
-            r_low = r_mid
-        else:
-            r_high = r_mid
-    
-    # Clamp to reasonable range
-    r_mid = max(1.1, min(r_mid, 8.0))
-    
-    return r_mid
 
 
 def write_blockmesh_dict(content, output_path):

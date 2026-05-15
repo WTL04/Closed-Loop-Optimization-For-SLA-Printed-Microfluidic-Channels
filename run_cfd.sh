@@ -21,8 +21,8 @@ HEIGHT_DELTA="${6:-}"
 # NOTE: if you change Dockerfile or req.txt, run: docker rmi unified-cfd-env
 #       to force a rebuild on next run
 if [[ "$(docker images -q $IMAGE_NAME 2>/dev/null)" == "" ]]; then
-	echo "Building Docker image '$IMAGE_NAME'..."
-	docker build -t $IMAGE_NAME .
+  echo "Building Docker image '$IMAGE_NAME'..."
+  docker build -t $IMAGE_NAME .
 fi
 
 # ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ fi
 # ---------------------------------------------------------------------------
 INNER_SCRIPT="$REPO_ROOT/.pipeline_inner.sh"
 
-cat >"$INNER_SCRIPT" <<INNEREOF
+cat >"$INNER_SCRIPT" <<'INNEREOF'
 #!/bin/bash
 
 # ---------------------------------------------------------------
@@ -62,6 +62,8 @@ cd /case/cfd/channelCase
 rm -rf constant/polyMesh postProcessing
 blockMesh
 checkMesh
+
+echo 'CFD Solver is running (check: tail -f cfd/channelCase/log.simpleFoam for progress)...'
 
 SIMPLEFOAM_SUCCESS=0
 
@@ -96,10 +98,10 @@ echo "Starting Unified Pipeline..."
 echo "Repo root: $REPO_ROOT"
 
 docker run --rm \
-	--entrypoint bash \
-	-v "$REPO_ROOT:/case" \
-	$IMAGE_NAME \
-	/case/.pipeline_inner.sh
+  --entrypoint bash \
+  -v "$REPO_ROOT:/case" \
+  $IMAGE_NAME \
+  /case/.pipeline_inner.sh
 
 # Clean up inner script after run
 rm -f "$INNER_SCRIPT"

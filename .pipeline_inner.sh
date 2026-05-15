@@ -6,8 +6,10 @@
 echo '--- Step 1: Generate blockMeshDict ---'
 cd /case
 
-if [ -n "40060.0" ] && [ -n "495.0" ] && [ -n "530.0" ] && [ -n "8.919244992507192" ] && [ -n "11.20600664271413" ] && [ -n "1.8088853308043262" ]; then
-    python contextual_opt/src/cad/generate_blockmesh.py         40060.0 495.0 530.0         8.919244992507192 11.20600664271413 1.8088853308043262
+if [ -n "${CBO_LENGTH_UM}" ] && [ -n "${CBO_WIDTH_UM}" ] && [ -n "${CBO_HEIGHT_UM}" ] && [ -n "${LENGTH_DELTA}" ] && [ -n "${WIDTH_DELTA}" ] && [ -n "${HEIGHT_DELTA}" ]; then
+    python contextual_opt/src/cad/generate_blockmesh.py \
+        ${CBO_LENGTH_UM} ${CBO_WIDTH_UM} ${CBO_HEIGHT_UM} \
+        ${LENGTH_DELTA} ${WIDTH_DELTA} ${HEIGHT_DELTA}
 else
     python contextual_opt/src/cad/generate_blockmesh.py
 fi
@@ -25,6 +27,8 @@ cd /case/cfd/channelCase
 rm -rf constant/polyMesh postProcessing
 blockMesh
 checkMesh
+
+echo 'CFD Solver is running (check: tail -f cfd/channelCase/log.simpleFoam for progress)...'
 
 SIMPLEFOAM_SUCCESS=0
 
@@ -45,7 +49,7 @@ fi
 echo '--- Step 3: Extract Flow Rate ---'
 cd /case
 
-if [  -eq 1 ]; then
+if [ $SIMPLEFOAM_SUCCESS -eq 1 ]; then
     echo "FLOW_RATE:-1.0" > cfd/channelCase/flow_rate.txt
     echo "WARN: CFD simulation failed, returning sentinel value -1.0"
 else

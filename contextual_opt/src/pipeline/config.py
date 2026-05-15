@@ -38,4 +38,4 @@ BASE_THICKNESS = 1.0  # mm
 CFD_RUN_SCRIPT = "run_cfd.sh"
 
 # Excel sheet name for experiment data
-SHEET_NAME = "Experiment Realistic Deltas"
+SHEET_NAME = "Experiment Random Deltas"
