@@ -29,9 +29,4 @@ boundaryField
     {
         type zeroGradient;
     }
-
-    box
-    {
-        type zeroGradient;
-    }
 }
