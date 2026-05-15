@@ -107,7 +107,7 @@ def run_single_channel(
     flow_rate = channel_results["flow_rate"]
     if flow_rate > 0:
         metric_values["flow_rate"] = flow_rate
-    elif flow_rate == -1.0:
+    elif flow_rate_m3s == -1.0:
         print(
             "  WARNING: CFD simulation failed (sentinel -1.0) — skipping flow_rate for surrogate"
         )

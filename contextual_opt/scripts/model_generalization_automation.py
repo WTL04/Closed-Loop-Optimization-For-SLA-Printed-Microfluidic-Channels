@@ -17,8 +17,7 @@ if __name__ == "__main__":
     sheet_name = SHEET_NAME
 
     # 10 runs, 30, runs, 50 runs, 70 runs
-    # TEST: only 10 number of channels per batch
-    for j in [10]:
+    for j in [10, 30, 50, 70]:
         for i in range(4):
             print("\n" + "=" * 60)
             print(f" {j} Channel Runs, Batch {i + 1}/4")

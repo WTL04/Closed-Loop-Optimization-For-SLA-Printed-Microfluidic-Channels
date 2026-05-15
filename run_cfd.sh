@@ -32,7 +32,7 @@ fi
 # ---------------------------------------------------------------------------
 INNER_SCRIPT="$REPO_ROOT/.pipeline_inner.sh"
 
-cat >"$INNER_SCRIPT" <<'INNEREOF'
+cat >"$INNER_SCRIPT" <<INNEREOF
 #!/bin/bash
 
 # ---------------------------------------------------------------
@@ -59,7 +59,7 @@ set -e
 
 cd /case/cfd/channelCase
 
-rm -rf constant/polyMesh postProcessing
+rm -rf constant/polyMesh postProcessing flow_rate.txt
 blockMesh
 checkMesh
 
