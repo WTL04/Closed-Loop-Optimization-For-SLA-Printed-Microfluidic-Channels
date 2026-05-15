@@ -11,11 +11,13 @@ Each batch starts fresh with new CBO for independent exploration.
 """
 
 from contextual_opt.src.pipeline.run import run_sequential
+from contextual_opt.src.pipeline.config import SHEET_NAME
 
 if __name__ == "__main__":
-    sheet_name = "Experiment Random Deltas"
+    sheet_name = SHEET_NAME
 
     # 10 runs, 30, runs, 50 runs, 70 runs
+    # TEST: only 10 number of channels per batch
     for j in [10]:
         for i in range(4):
             print("\n" + "=" * 60)

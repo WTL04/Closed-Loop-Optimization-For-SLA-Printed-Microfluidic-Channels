@@ -36,3 +36,6 @@ BASE_THICKNESS = 1.0  # mm
 
 # Path to the shell script that runs the full CFD pipeline
 CFD_RUN_SCRIPT = "run_cfd.sh"
+
+# Excel sheet name for experiment data
+SHEET_NAME = "Experiment Realistic Deltas"

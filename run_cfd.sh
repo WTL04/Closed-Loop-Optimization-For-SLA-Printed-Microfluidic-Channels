@@ -21,8 +21,8 @@ HEIGHT_DELTA="${6:-}"
 # NOTE: if you change Dockerfile or req.txt, run: docker rmi unified-cfd-env
 #       to force a rebuild on next run
 if [[ "$(docker images -q $IMAGE_NAME 2>/dev/null)" == "" ]]; then
-  echo "Building Docker image '$IMAGE_NAME'..."
-  docker build -t $IMAGE_NAME .
+	echo "Building Docker image '$IMAGE_NAME'..."
+	docker build -t $IMAGE_NAME .
 fi
 
 # ---------------------------------------------------------------------------
@@ -36,17 +36,17 @@ cat >"$INNER_SCRIPT" <<INNEREOF
 #!/bin/bash
 
 # ---------------------------------------------------------------
-# 1. CAD Generation
+# 1. Mesh Generation (parametric blockMesh)
 # ---------------------------------------------------------------
-echo '--- Step 1: CAD Generation ---'
+echo '--- Step 1: Generate blockMeshDict ---'
 cd /case
 
 if [ -n "${CBO_LENGTH_UM}" ] && [ -n "${CBO_WIDTH_UM}" ] && [ -n "${CBO_HEIGHT_UM}" ] && [ -n "${LENGTH_DELTA}" ] && [ -n "${WIDTH_DELTA}" ] && [ -n "${HEIGHT_DELTA}" ]; then
-    python contextual_opt/src/cad/single_channel_inlet_outlet_cfd_export.py \
+    python contextual_opt/src/cad/generate_blockmesh.py \
         ${CBO_LENGTH_UM} ${CBO_WIDTH_UM} ${CBO_HEIGHT_UM} \
         ${LENGTH_DELTA} ${WIDTH_DELTA} ${HEIGHT_DELTA}
 else
-    python contextual_opt/src/cad/single_channel_inlet_outlet_cfd_export.py
+    python contextual_opt/src/cad/generate_blockmesh.py
 fi
 
 # ---------------------------------------------------------------
@@ -61,17 +61,33 @@ cd /case/cfd/channelCase
 
 rm -rf constant/polyMesh postProcessing
 blockMesh
-surfaceFeatureExtract
-snappyHexMesh -overwrite
 checkMesh
-simpleFoam || true
+
+SIMPLEFOAM_SUCCESS=0
+
+if ! simpleFoam > log.simpleFoam 2>&1; then
+    echo "WARN: simpleFoam failed on first attempt, retrying with relaxed settings..."
+    cp system/fvSolution.relaxed system/fvSolution
+    rm -rf [0-9]* postProcessing constant/polyMesh
+    
+    if ! simpleFoam > log.simpleFoam.relaxed 2>&1; then
+        echo "ERROR: simpleFoam failed even with relaxed settings"
+        SIMPLEFOAM_SUCCESS=1
+    fi
+fi
 
 # ---------------------------------------------------------------
 # 3. Flow Rate Extraction
 # ---------------------------------------------------------------
 echo '--- Step 3: Extract Flow Rate ---'
 cd /case
-python extract_flow_rate.py > cfd/channelCase/flow_rate.txt
+
+if [ $SIMPLEFOAM_SUCCESS -eq 1 ]; then
+    echo "FLOW_RATE:-1.0" > cfd/channelCase/flow_rate.txt
+    echo "WARN: CFD simulation failed, returning sentinel value -1.0"
+else
+    python extract_flow_rate.py > cfd/channelCase/flow_rate.txt
+fi
 INNEREOF
 
 chmod +x "$INNER_SCRIPT"
@@ -80,10 +96,10 @@ echo "Starting Unified Pipeline..."
 echo "Repo root: $REPO_ROOT"
 
 docker run --rm \
-  --entrypoint bash \
-  -v "$REPO_ROOT:/case" \
-  $IMAGE_NAME \
-  /case/.pipeline_inner.sh
+	--entrypoint bash \
+	-v "$REPO_ROOT:/case" \
+	$IMAGE_NAME \
+	/case/.pipeline_inner.sh
 
 # Clean up inner script after run
 rm -f "$INNER_SCRIPT"

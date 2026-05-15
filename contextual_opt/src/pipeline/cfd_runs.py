@@ -57,8 +57,12 @@ def run_cfd_simulation(
         with open("cfd/channelCase/flow_rate.txt", "r") as f:
             content = f.read().strip()
             if "FLOW_RATE:" in content:
-                return float(content.split("FLOW_RATE:")[1])
-            return 0.0
+                flow_rate = float(content.split("FLOW_RATE:")[1])
+                if flow_rate < 0:
+                    print(f"CFD simulation failed (sentinel value {flow_rate})")
+                return flow_rate
+            print("ERROR: Unexpected flow_rate.txt format")
+            return -1.0
 
     except Exception as e:
         print(f"CFD simulation failed: {e}")
