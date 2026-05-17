@@ -17,7 +17,8 @@ from contextual_opt.src.pipeline.cfd_runs import run_cfd_simulation
 
 
 def run_single_channel(
-    cbo, context, sheet_name: str, channel_num: int, use_real_data: bool
+    cbo, context, sheet_name: str, channel_num: int, use_real_data: bool,
+    case_dir: str = "cfd/channelCase",
 ):
     """
     Run CBO for a SINGLE channel, return result.
@@ -82,6 +83,7 @@ def run_single_channel(
             length_delta=deltas["length"],
             width_delta=deltas["width"],
             height_delta=deltas["height"],
+            case_dir=case_dir,
         )
         flow_rate_ml = flow_rate_m3s * 1e6 * 60
 

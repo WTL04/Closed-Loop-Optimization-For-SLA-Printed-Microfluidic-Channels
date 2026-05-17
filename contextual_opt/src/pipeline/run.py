@@ -28,6 +28,7 @@ def run_with_google_sheets(
     append_to_sheets: bool = True,
     cbo=None,
     load_historical: bool = True,
+    case_dir: str = "cfd/channelCase",
 ):
     """
     Run CBO using data from Google Sheets.
@@ -75,7 +76,8 @@ def run_with_google_sheets(
 
     # Run CBO for ONE channel
     result = run_single_channel(
-        cbo, context, sheet_name, channel_num, use_real_data=use_real_data
+        cbo, context, sheet_name, channel_num, use_real_data=use_real_data,
+        case_dir=case_dir,
     )
 
     # Append result to sheets if requested
@@ -170,6 +172,7 @@ def run_sequential(
     start_ambient: float = 80.0,
     start_resin_age: float = 1.0,
     resin_temp: float = 80.0,
+    case_dir: str = "cfd/channelCase",
 ):
     """
     Run CBO sequentially for N channels (1→2→3→...).
@@ -217,14 +220,29 @@ def run_sequential(
             cbo.add_historical(df_full)
             print(f"Loaded initial {len(df_full)} historical rows")
 
-    current_ambient = start_ambient
-    current_resin_age = start_resin_age
-
     print(f"Starting sequential run - {num_channels} channels")
     print(f"Temp direction: {temp}, Layer thickness: {layer_thickness_um} µm")
-    print(f"Start ambient: {start_ambient}°F, Start resin age: {start_resin_age}hr")
 
     latest_channel = get_latest_col_value(column_name="channel", sheet_name=sheet_name)
+
+    # If resuming, derive context state from the last sheet row
+    if latest_channel:
+        df_state = pullData(sheet_name=sheet_name, verbose=False)
+        if not df_state.empty:
+            last = df_state.iloc[-1]
+            current_ambient = float(last["ambient_temp"])
+            current_resin_age = float(last["resin_age"]) + 6
+            print(
+                f"Resuming from channel {latest_channel}: "
+                f"ambient={current_ambient}°F, resin_age={current_resin_age}hr"
+            )
+        else:
+            current_ambient = start_ambient
+            current_resin_age = start_resin_age
+    else:
+        current_ambient = start_ambient
+        current_resin_age = start_resin_age
+        print(f"Start ambient: {start_ambient}°F, Start resin age: {start_resin_age}hr")
     next_channel = (int(latest_channel) + 1) if latest_channel else 1
 
     for i in range(num_channels):
@@ -260,6 +278,7 @@ def run_sequential(
             append_to_sheets=append_to_sheets,
             cbo=cbo,
             load_historical=False,
+            case_dir=case_dir,
         )
         results.append(result)
 

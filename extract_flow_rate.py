@@ -1,10 +1,10 @@
+import argparse
 from pathlib import Path
 
-CASE_DIR = Path("cfd/channelCase")
-POST_DIR = CASE_DIR / "postProcessing" / "flowRatePatch(name=outlet)"
 
-
-def extract_flow_rate() -> float:
+def extract_flow_rate(case_dir: str = "cfd/channelCase") -> float:
+    CASE_DIR = Path(case_dir)
+    POST_DIR = CASE_DIR / "postProcessing" / "flowRatePatch(name=outlet)"
     """Extract flow rate from OpenFOAM v1912 function object output.
 
     Returns:
@@ -59,5 +59,8 @@ def extract_flow_rate() -> float:
 
 
 if __name__ == "__main__":
-    flow_rate = extract_flow_rate()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--case-dir", default="cfd/channelCase")
+    args = parser.parse_args()
+    flow_rate = extract_flow_rate(case_dir=args.case_dir)
     print(f"FLOW_RATE:{flow_rate}")

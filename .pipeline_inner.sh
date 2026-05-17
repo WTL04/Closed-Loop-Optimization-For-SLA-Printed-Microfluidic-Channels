@@ -1,17 +1,23 @@
 #!/bin/bash
 
 # ---------------------------------------------------------------
+# 0. Prepare clean case directory
+# ---------------------------------------------------------------
+WORKDIR="/case/cfd/channelCase_random"
+echo "--- Step 0: Prepare clean case in  ---"
+rm -rf "$WORKDIR"
+cp -r /case/cfd/channelCase_template "$WORKDIR"
+
+# ---------------------------------------------------------------
 # 1. Mesh Generation (parametric blockMesh)
 # ---------------------------------------------------------------
 echo '--- Step 1: Generate blockMeshDict ---'
 cd /case
 
-if [ -n "${CBO_LENGTH_UM}" ] && [ -n "${CBO_WIDTH_UM}" ] && [ -n "${CBO_HEIGHT_UM}" ] && [ -n "${LENGTH_DELTA}" ] && [ -n "${WIDTH_DELTA}" ] && [ -n "${HEIGHT_DELTA}" ]; then
-    python contextual_opt/src/cad/generate_blockmesh.py \
-        ${CBO_LENGTH_UM} ${CBO_WIDTH_UM} ${CBO_HEIGHT_UM} \
-        ${LENGTH_DELTA} ${WIDTH_DELTA} ${HEIGHT_DELTA}
+if [ -n "39940.0" ] && [ -n "508.1265041127888" ] && [ -n "509.4874439014482" ] && [ -n "6.900627963708425" ] && [ -n "0.08292264598274623" ] && [ -n "17.835218719023185" ]; then
+    python contextual_opt/src/cad/generate_blockmesh.py         39940.0 508.1265041127888 509.4874439014482         6.900627963708425 0.08292264598274623 17.835218719023185         --output "cfd/channelCase_random/system/blockMeshDict"
 else
-    python contextual_opt/src/cad/generate_blockmesh.py
+    python contextual_opt/src/cad/generate_blockmesh.py         --output "cfd/channelCase_random/system/blockMeshDict"
 fi
 
 # ---------------------------------------------------------------
@@ -22,13 +28,12 @@ set +e
 source /usr/lib/openfoam/openfoam1912/etc/bashrc
 set -e
 
-cd /case/cfd/channelCase
+cd "$WORKDIR"
 
-rm -rf constant/polyMesh postProcessing
 blockMesh
 checkMesh
 
-echo 'CFD Solver is running (check: tail -f cfd/channelCase/log.simpleFoam for progress)...'
+echo "CFD Solver is running (check: tail -f cfd/channelCase_random/log.simpleFoam for progress)..."
 
 SIMPLEFOAM_SUCCESS=0
 
@@ -50,8 +55,8 @@ echo '--- Step 3: Extract Flow Rate ---'
 cd /case
 
 if [ $SIMPLEFOAM_SUCCESS -eq 1 ]; then
-    echo "FLOW_RATE:-1.0" > cfd/channelCase/flow_rate.txt
+    echo "FLOW_RATE:-1.0" > cfd/channelCase_random/flow_rate.txt
     echo "WARN: CFD simulation failed, returning sentinel value -1.0"
 else
-    python extract_flow_rate.py > cfd/channelCase/flow_rate.txt
+    python extract_flow_rate.py --case-dir cfd/channelCase_random > cfd/channelCase_random/flow_rate.txt
 fi

@@ -16,6 +16,7 @@ def run_cfd_simulation(
     length_delta: float,
     width_delta: float,
     height_delta: float,
+    case_dir: str = "cfd/channelCase",
 ) -> float:
     """
     Run the full CFD pipeline by calling run_cfd.sh with CBO CAD inputs and deltas.
@@ -29,6 +30,7 @@ def run_cfd_simulation(
         length_delta:  Post-print length shrinkage in µm
         width_delta:   Post-print width shrinkage in µm
         height_delta:  Post-print height shrinkage in µm
+        case_dir:      Case directory (default cfd/channelCase)
 
     Returns:
         Flow rate in m^3/s extracted from OpenFOAM
@@ -49,12 +51,14 @@ def run_cfd_simulation(
                 str(length_delta),
                 str(width_delta),
                 str(height_delta),
+                case_dir,
             ],
             check=True,
         )
 
         # Read extracted flow rate
-        with open("cfd/channelCase/flow_rate.txt", "r") as f:
+        flow_rate_path = f"{case_dir}/flow_rate.txt"
+        with open(flow_rate_path, "r") as f:
             content = f.read().strip()
             if "FLOW_RATE:" in content:
                 flow_rate = float(content.split("FLOW_RATE:")[1])

@@ -14,6 +14,7 @@ Usage:
     Physical dimension = CBO_suggested - delta (the actual printed result)
 """
 
+import argparse
 import os
 import sys
 import math
@@ -21,9 +22,6 @@ import math
 # CFD extensions (mm) - inlet and outlet regions for flow development
 INLET_LENGTH_MM = 5.0
 OUTLET_LENGTH_MM = 5.0
-
-# Output path
-BLOCKMESH_DICT_PATH = "cfd/channelCase/system/blockMeshDict"
 
 # Mesh parameters - Conservative settings for boundary layer resolution
 FIRST_CELL_SIZE_UM = 10.0  # First cell height at wall (micrometers)
@@ -253,9 +251,13 @@ def write_blockmesh_dict(content, output_path):
     print(f"Generated {output_path}")
 
 
-def run(cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um):
+def run(cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um,
+        output_path="cfd/channelCase/system/blockMeshDict"):
     """
     Main function to generate blockMeshDict from CBO parameters.
+
+    Args:
+        output_path: Path to write the blockMeshDict file.
     """
     # Calculate physical dimensions
     L_mm, W_mm, H_mm = compute_physical_dimensions(
@@ -270,30 +272,36 @@ def run(cbo_l_um, cbo_w_um, cbo_h_um, delta_l_um, delta_w_um, delta_h_um):
     content = generate_blockmesh_dict(L_mm, W_mm, H_mm)
     
     # Write to file
-    write_blockmesh_dict(content, BLOCKMESH_DICT_PATH)
+    write_blockmesh_dict(content, output_path)
     
     return L_mm, W_mm, H_mm
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 7:
-        cbo_l = float(sys.argv[1])
-        cbo_w = float(sys.argv[2])
-        cbo_h = float(sys.argv[3])
-        delta_l = float(sys.argv[4])
-        delta_w = float(sys.argv[5])
-        delta_h = float(sys.argv[6])
-    elif len(sys.argv) >= 4:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("args", nargs="*", help="cbo_l cbo_w cbo_h delta_l delta_w delta_h")
+    parser.add_argument("--output", default="cfd/channelCase/system/blockMeshDict")
+    parsed = parser.parse_args()
+    output_path = parsed.output
+
+    if len(parsed.args) >= 6:
+        cbo_l = float(parsed.args[0])
+        cbo_w = float(parsed.args[1])
+        cbo_h = float(parsed.args[2])
+        delta_l = float(parsed.args[3])
+        delta_w = float(parsed.args[4])
+        delta_h = float(parsed.args[5])
+    elif len(parsed.args) >= 3:
         print("Received 3 args - treating as deltas only, using nominal CBO inputs.")
         cbo_l = 40000.0
         cbo_w = 500.0
         cbo_h = 500.0
-        delta_l = float(sys.argv[1])
-        delta_w = float(sys.argv[2])
-        delta_h = float(sys.argv[3])
+        delta_l = float(parsed.args[0])
+        delta_w = float(parsed.args[1])
+        delta_h = float(parsed.args[2])
     else:
         print("No arguments provided. Using nominal dimensions with zero deltas.")
         cbo_l, cbo_w, cbo_h = 40000.0, 500.0, 500.0
         delta_l, delta_w, delta_h = 0.0, 0.0, 0.0
     
-    run(cbo_l, cbo_w, cbo_h, delta_l, delta_w, delta_h)
+    run(cbo_l, cbo_w, cbo_h, delta_l, delta_w, delta_h, output_path=output_path)
