@@ -18,6 +18,24 @@ cfd/channelCase/[0-9][0-9]*/
 cfd/channelCase/postProcessing/
 cfd/channelCase/case.foam
 cfd/channelCase/log.simpleFoam
+
+cfd/channelCase_random/constant/polyMesh/*
+cfd/channelCase_random/constant/extendedFeatureEdgeMesh/*
+cfd/channelCase_random/constant/triSurface/*
+cfd/channelCase_random/[1-9]*/
+cfd/channelCase_random/[0-9][0-9]*/
+cfd/channelCase_random/postProcessing/
+cfd/channelCase_random/case.foam
+cfd/channelCase_random/log.simpleFoam
+
+cfd/channelCase_realistic/constant/polyMesh/*
+cfd/channelCase_realistic/constant/extendedFeatureEdgeMesh/*
+cfd/channelCase_realistic/constant/triSurface/*
+cfd/channelCase_realistic/[1-9]*/
+cfd/channelCase_realistic/[0-9][0-9]*/
+cfd/channelCase_realistic/postProcessing/
+cfd/channelCase_realistic/case.foam
+cfd/channelCase_realistic/log.simpleFoam
 flow_rate.txt
 
 # OS / editor

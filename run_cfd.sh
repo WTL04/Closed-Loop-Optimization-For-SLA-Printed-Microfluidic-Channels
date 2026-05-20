@@ -31,7 +31,8 @@ fi
 # This avoids passing a long inline string to docker run, which breaks
 # source commands and makes set -e behave unpredictably
 # ---------------------------------------------------------------------------
-INNER_SCRIPT="$REPO_ROOT/.pipeline_inner.sh"
+SAFE_CASE="${CASE_DIR//\//_}"
+INNER_SCRIPT="$REPO_ROOT/.pipeline_inner_${SAFE_CASE}.sh"
 
 cat >"$INNER_SCRIPT" <<INNEREOF
 #!/bin/bash
@@ -111,10 +112,10 @@ docker run --rm \
   --entrypoint bash \
   -v "$REPO_ROOT:/case" \
   $IMAGE_NAME \
-  /case/.pipeline_inner.sh
+  "/case/.pipeline_inner_${SAFE_CASE}.sh"
 
 # Clean up inner script after run
-rm -f "$INNER_SCRIPT"
+rm -f "$INNER_SCRIPT" || true
 
 echo "Pipeline Finished."
 echo "Calculated Flow Rate: $(cat ${CASE_DIR}/flow_rate.txt)"
