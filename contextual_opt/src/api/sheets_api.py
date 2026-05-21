@@ -5,9 +5,13 @@ from dotenv import load_dotenv
 import os
 
 # load environmental variables
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"))
 SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 SHEET_ID = os.getenv("SHEET_ID")
+if SERVICE_ACCOUNT_FILE and not os.path.isabs(SERVICE_ACCOUNT_FILE):
+    SERVICE_ACCOUNT_FILE = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", SERVICE_ACCOUNT_FILE)
+    )
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive",
@@ -107,6 +111,50 @@ def get_latest_col_value(
         raise
     except Exception as e:
         print(f"ERROR: Failed to get latest column value: {e}")
+        raise
+
+
+def get_column(
+    column_name: str,
+    sheet_name: str = "Sheet1",
+) -> pd.DataFrame:
+    try:
+        # authorize client with credentials
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(SHEET_ID)
+        worksheet = sheet.worksheet(sheet_name)
+
+        # fetch header row
+        headers = worksheet.row_values(1)
+        if column_name not in headers:
+            raise ValueError(f"Column '{column_name}' not found")
+
+        col_idx = headers.index(column_name) + 1  # 1-based indexing
+
+        # get all column values
+        col_values = worksheet.col_values(col_idx)[1:]
+
+        # filter empty cells
+        col_values = [v for v in col_values if v != ""]
+
+        # Return empty DataFrame instead of None to respect type hint
+        if not col_values:
+            return pd.DataFrame(columns=[column_name])
+
+        # Assign the correct column name
+        df = pd.DataFrame(col_values, columns=[column_name])
+
+        # Convert strings to numeric values.
+        # errors='ignore' leaves purely text columns intact.
+        df[column_name] = pd.to_numeric(df[column_name], errors="coerce")
+
+        return df
+
+    except gspread.exceptions.SpreadsheetNotFound:
+        print(f"ERROR: Spreadsheet not found. SHEET_ID={SHEET_ID}")
+        raise
+    except gspread.exceptions.WorksheetNotFound:
+        print(f"ERROR: Worksheet '{sheet_name}' not found")
         raise
 
 
