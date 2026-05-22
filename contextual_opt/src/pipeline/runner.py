@@ -72,7 +72,10 @@ def run_single_channel(
     else:
         # Real CFD
         deltas = (
-            generate_realistic_deltas()
+            generate_realistic_deltas(
+                ambient_temp=context["ambient_temp"],
+                resin_age_hours=context["resin_age"],
+            )
             if "Realistic" in sheet_name
             else generate_random_deltas()
         )
