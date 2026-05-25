@@ -11,10 +11,8 @@ import numpy as np
 
 def generate_random_deltas() -> dict:
     """
-    Generate random post-print deltas using uniform distribution.
-
-    Args:
-        mode: Distribution type (currently only uniform supported)
+    Generate random post-print deltas using uniform distribution (0–19 µm).
+    Serves as the stationary baseline condition with no context coupling.
 
     Returns:
         dict with length, width, height delta values in µm
@@ -91,9 +89,9 @@ def generate_realistic_deltas(
         outlier_prob = np.clip(0.05 + (resin_age_hours * 0.0003), 0.05, 0.12)
         outlier = 0.0
         if np.random.random() < outlier_prob:
-            outlier = np.random.uniform(5, 10)
+            outlier = np.random.uniform(8, 15)
 
         total_delta = core + overcure + outlier
-        deltas[dim] = np.clip(total_delta, 0.0, 22.0)
+        deltas[dim] = np.clip(total_delta, 0.0, 23.0)
 
     return deltas
